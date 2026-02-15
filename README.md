@@ -17,7 +17,7 @@
    ```env
    discord:
      token: <Your Token Here>
-     user: <Your User ID Here>
+     user: "<Your User ID Here>"
    
    channels:
      - name: エナジーメモ
