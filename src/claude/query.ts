@@ -6,6 +6,7 @@ import { loadSystemPrompt } from "./prompt-builder.js";
 export function startClaudeQuery(
   prompt: string,
   channelId: string,
+  cwd: string,
   config: Config,
   sessions: SessionManager,
 ): Query {
@@ -19,7 +20,7 @@ export function startClaudeQuery(
   return query({
     prompt,
     options: {
-      cwd: process.cwd(),
+      cwd,
       model: config.claude.model,
       systemPrompt: isNewSession ? loadSystemPrompt() : undefined,
       resume: existingSessionId ?? undefined,

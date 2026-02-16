@@ -22,8 +22,10 @@
    channels:
      - name: エナジーメモ
        skill: daily-strength
+       dir: ../skills
      - name: 料理メモ
        skill: dish-strength
+       dir: ../skills
    ```
 
 5. 起動:

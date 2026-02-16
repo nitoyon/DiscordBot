@@ -9,7 +9,7 @@ import { downloadAttachments, cleanupFiles } from "./attachment-downloader.js";
 export interface QueuedMessage {
   message: Message;
   channel: TextChannel;
-  channelConfig: { name: string; skill: string };
+  channelConfig: { name: string; skill: string; workdir: string };
 }
 
 export class ChannelQueue {
@@ -80,6 +80,7 @@ export class ChannelQueue {
       const queryStream = startClaudeQuery(
         prompt,
         message.channelId,
+        channelConfig.workdir,
         this.config,
         this.sessions,
       );

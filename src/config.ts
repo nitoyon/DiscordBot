@@ -1,10 +1,11 @@
 import { readFileSync } from "fs";
+import { resolve } from "path";
 import { parse } from "yaml";
 
 export interface Config {
   discord: { token: string; user: string };
   claude: { model: string };
-  channels: { name: string; skill: string }[];
+  channels: { name: string; skill: string; workdir: string }[];
 }
 
 export function loadConfig(path = ".env.yaml"): Config {
@@ -21,6 +22,7 @@ export function loadConfig(path = ".env.yaml"): Config {
     if (!ch.name || typeof ch.skill !== "string") {
       throw new Error("Each channel must have name and skill");
     }
+    ch.workdir = ch.workdir ? resolve(ch.workdir) : process.cwd();
   }
 
   return data as Config;
