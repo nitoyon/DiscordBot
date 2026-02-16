@@ -12,10 +12,10 @@ export function buildMessagePrompt(params: {
     ? ` ${params.attachments.join(" ")}`
     : "";
   return [
-    `id: ${params.id}`,
     params.skill === "" ?
       `content: ${params.content}` :
-      `content: /${params.skill} ${params.content}`,
+      `/${params.skill} ${params.content}`,
+    `id: ${params.id}`,
     `channel: ${params.channelId}`,
     `attachments:${attachmentsValue}`,
     `reactions:`,

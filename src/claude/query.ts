@@ -13,8 +13,8 @@ export function startClaudeQuery(
   const existingSessionId = sessions.getSessionId(channelId);
   const isNewSession = !existingSessionId;
 
-  console.log("[Claude] querry: ", query);
-  console.log("[Claude] session: ",
+  console.log("[Claude] querry:", prompt);
+  console.log("[Claude] session:",
     isNewSession ? "NEW" : existingSessionId);
 
   return query({
@@ -24,9 +24,10 @@ export function startClaudeQuery(
       model: config.claude.model,
       systemPrompt: isNewSession ? loadSystemPrompt() : undefined,
       resume: existingSessionId ?? undefined,
-      maxTurns: 1,
+      maxTurns: 100,
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
+      settingSources: ["project"],
     },
   });
 }

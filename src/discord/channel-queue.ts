@@ -67,7 +67,7 @@ export class ChannelQueue {
   private async processMessage(item: QueuedMessage): Promise<void> {
     const { message, channel, channelConfig } = item;
 
-    const attachmentPaths = await downloadAttachments(message.attachments);
+    const attachmentPaths = await downloadAttachments(message.attachments, channelConfig.workdir);
     try {
       const prompt = buildMessagePrompt({
         id: message.id,
