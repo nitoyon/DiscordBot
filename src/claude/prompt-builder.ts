@@ -22,6 +22,19 @@ export function buildMessagePrompt(params: {
   ].join("\n");
 }
 
+export function buildReactionPrompt(params: {
+  emoji: string;
+  targetMessageId: string;
+  channelId: string;
+}): string {
+  return [
+    `[reaction added]`,
+    `target_message_id: ${params.targetMessageId}`,
+    `emoji: ${params.emoji}`,
+    `channel: ${params.channelId}`,
+  ].join("\n");
+}
+
 let cachedSystemPrompt: string | undefined;
 
 export function loadSystemPrompt(): string {

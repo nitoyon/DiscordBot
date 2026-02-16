@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, TextChannel } from "discord.js";
+import { Client, GatewayIntentBits, Partials, TextChannel } from "discord.js";
 import type { Config } from "../config.js";
 import type { SessionManager } from "../session-manager.js";
 import { ChannelQueue } from "./channel-queue.js";
@@ -12,7 +12,9 @@ export function createDiscordClient(
       GatewayIntentBits.Guilds,
       GatewayIntentBits.GuildMessages,
       GatewayIntentBits.MessageContent,
+      GatewayIntentBits.GuildMessageReactions,
     ],
+    partials: [Partials.Message, Partials.Reaction],
   });
 
   const channelQueue = new ChannelQueue(config, sessions);
@@ -38,6 +40,50 @@ export function createDiscordClient(
     );
 
     channelQueue.enqueue({ message, channel, channelConfig });
+  });
+
+  client.on("messageReactionAdd", async (reaction, user) => {
+    if (user.bot) return;
+    if (user.id !== config.discord.user.toString()) return;
+
+    // Fetch partial reaction/message if needed
+    if (reaction.partial) {
+      try {
+        await reaction.fetch();
+      } catch (err) {
+        console.error("[Discord] Failed to fetch partial reaction:", err);
+        return;
+      }
+    }
+    if (reaction.message.partial) {
+      try {
+        await reaction.message.fetch();
+      } catch (err) {
+        console.error("[Discord] Failed to fetch partial message:", err);
+        return;
+      }
+    }
+
+    if (!(reaction.message.channel instanceof TextChannel)) return;
+    const channel = reaction.message.channel;
+
+    const channelConfig = config.channels.find(
+      (ch) => ch.name === channel.name,
+    );
+    if (!channelConfig) return;
+
+    const emoji = reaction.emoji.name ?? reaction.emoji.toString();
+    console.log(
+      `[Discord] #${channel.name} ${user.username} reacted: ${emoji}`,
+    );
+
+    channelQueue.enqueueReaction({
+      emoji,
+      targetMessageId: reaction.message.id,
+      channelId: channel.id,
+      channel,
+      channelConfig,
+    });
   });
 
   return client;
