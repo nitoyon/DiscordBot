@@ -1,4 +1,4 @@
-import { TextChannel, type Client } from "discord.js";
+import { TextChannel } from "discord.js";
 
 export interface CommandContext {
   channel: TextChannel;

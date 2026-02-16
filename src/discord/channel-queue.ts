@@ -37,7 +37,7 @@ export class ChannelQueue {
     this.sessions = sessions;
   }
 
-  enqueue(item: QueuedTextMessage): void {
+  enqueue(item: Omit<QueuedTextMessage, "type">): void {
     this.enqueueItem({ ...item, type: "message" });
   }
 
