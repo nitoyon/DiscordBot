@@ -9,8 +9,11 @@ export function startClaudeQuery(
   cwd: string,
   config: Config,
   sessions: SessionManager,
+  { forceNewSession = false }: { forceNewSession?: boolean } = {},
 ): Query {
-  const existingSessionId = sessions.getSessionId(channelId);
+  const existingSessionId = forceNewSession
+    ? undefined
+    : sessions.getSessionId(channelId);
   const isNewSession = !existingSessionId;
 
   console.log("[Claude] querry:", prompt);

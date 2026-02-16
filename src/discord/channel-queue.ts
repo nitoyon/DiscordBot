@@ -143,6 +143,7 @@ export class ChannelQueue {
         channelConfig.workdir,
         this.config,
         this.sessions,
+        { forceNewSession: channelConfig.skill !== "" },
       );
 
       const { sessionId } = await streamToDiscord(queryStream, {
