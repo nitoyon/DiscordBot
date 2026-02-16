@@ -85,7 +85,13 @@ export class ChannelQueue {
         this.sessions,
       );
 
-      const { sessionId } = await streamToDiscord(queryStream, channel);
+      const { sessionId } = await streamToDiscord(queryStream, {
+        channel,
+        channelId: message.channelId,
+        workdir: channelConfig.workdir,
+        config: this.config,
+        sessions: this.sessions,
+      });
 
       if (sessionId) {
         this.sessions.setSessionId(message.channelId, sessionId);

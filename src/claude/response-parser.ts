@@ -7,7 +7,7 @@ interface TextBlock {
 
 /**
  * Extract text content from a stream of SDK messages.
- * Phase 1: plain text only. media:/reactions:/!discord parsing is deferred.
+ * Line-level parsing (media:/reactions:/!discord) is in response-line-parser.ts.
  */
 export function extractTextFromMessages(messages: SDKMessage[]): string {
   const parts: string[] = [];
