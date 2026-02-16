@@ -4,6 +4,7 @@ import type { SessionManager } from "../session-manager.js";
 import { buildMessagePrompt } from "../claude/prompt-builder.js";
 import { startClaudeQuery } from "../claude/query.js";
 import { streamToDiscord } from "./stream-handler.js";
+import { downloadAttachments, cleanupFiles } from "./attachment-downloader.js";
 
 export interface QueuedMessage {
   message: Message;
@@ -66,24 +67,30 @@ export class ChannelQueue {
   private async processMessage(item: QueuedMessage): Promise<void> {
     const { message, channel, channelConfig } = item;
 
-    const prompt = buildMessagePrompt({
-      id: message.id,
-      skill: channelConfig.skill,
-      content: message.content,
-      channelId: message.channelId,
-    });
+    const attachmentPaths = await downloadAttachments(message.attachments);
+    try {
+      const prompt = buildMessagePrompt({
+        id: message.id,
+        skill: channelConfig.skill,
+        content: message.content,
+        channelId: message.channelId,
+        attachments: attachmentPaths,
+      });
 
-    const queryStream = startClaudeQuery(
-      prompt,
-      message.channelId,
-      this.config,
-      this.sessions,
-    );
+      const queryStream = startClaudeQuery(
+        prompt,
+        message.channelId,
+        this.config,
+        this.sessions,
+      );
 
-    const { sessionId } = await streamToDiscord(queryStream, channel);
+      const { sessionId } = await streamToDiscord(queryStream, channel);
 
-    if (sessionId) {
-      this.sessions.setSessionId(message.channelId, sessionId);
+      if (sessionId) {
+        this.sessions.setSessionId(message.channelId, sessionId);
+      }
+    } finally {
+      await cleanupFiles(attachmentPaths);
     }
   }
 }

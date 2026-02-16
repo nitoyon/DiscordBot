@@ -6,14 +6,18 @@ export function buildMessagePrompt(params: {
   skill: string;
   content: string;
   channelId: string;
+  attachments?: string[];
 }): string {
+  const attachmentsValue = params.attachments?.length
+    ? ` ${params.attachments.join(" ")}`
+    : "";
   return [
     `id: ${params.id}`,
     params.skill === "" ?
       `content: ${params.content}` :
       `content: /${params.skill} ${params.content}`,
     `channel: ${params.channelId}`,
-    `attachments:`,
+    `attachments:${attachmentsValue}`,
     `reactions:`,
   ].join("\n");
 }
