@@ -2,6 +2,7 @@ import { type Client, type Message, TextChannel } from "discord.js";
 import type { Config } from "../config.js";
 import type { SessionManager } from "../session-manager.js";
 import { buildMessagePrompt, buildReactionPrompt } from "../claude/prompt-builder.js";
+
 import { startClaudeQuery } from "../claude/query.js";
 import { streamToDiscord } from "./stream-handler.js";
 import { downloadAttachments, cleanupFiles } from "./attachment-downloader.js";
@@ -105,10 +106,9 @@ export class ChannelQueue {
 
     const queryStream = startClaudeQuery(
       prompt,
-      item.channelId,
       channelConfig.workdir,
       this.config,
-      this.sessions,
+      this.sessions.getSessionId(item.channelId),
     );
 
     const { sessionId } = await streamToDiscord(queryStream, {
@@ -117,7 +117,6 @@ export class ChannelQueue {
       workdir: channelConfig.workdir,
       skill: channelConfig.skill,
       config: this.config,
-      sessions: this.sessions,
     });
 
     if (sessionId) {
@@ -140,11 +139,9 @@ export class ChannelQueue {
 
       const queryStream = startClaudeQuery(
         prompt,
-        message.channelId,
         channelConfig.workdir,
         this.config,
-        this.sessions,
-        { forceNewSession: channelConfig.skill !== "" },
+        channelConfig.skill !== "" ? undefined : this.sessions.getSessionId(message.channelId),
       );
 
       const { sessionId } = await streamToDiscord(queryStream, {
@@ -153,7 +150,6 @@ export class ChannelQueue {
         workdir: channelConfig.workdir,
         skill: channelConfig.skill,
         config: this.config,
-        sessions: this.sessions,
       });
 
       if (sessionId) {
@@ -204,11 +200,9 @@ export class ChannelQueue {
 
       const queryStream = startClaudeQuery(
         prompt,
-        channel.id,
         initWorkdir,
         this.config,
-        this.sessions,
-        { forceNewSession: true },
+        undefined,
       );
 
       try {
@@ -218,7 +212,6 @@ export class ChannelQueue {
           workdir: channelConfig.workdir,
           skill: channelConfig.skill,
           config: this.config,
-          sessions: this.sessions,
         });
         console.log(`[Init] Completed init for #${channelConfig.name}`);
       } catch (error) {

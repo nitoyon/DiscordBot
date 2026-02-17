@@ -1,24 +1,18 @@
 import { query, type Query } from "@anthropic-ai/claude-agent-sdk";
 import type { Config } from "../config.js";
-import type { SessionManager } from "../session-manager.js";
 import { loadSystemPrompt } from "./prompt-builder.js";
 
 export function startClaudeQuery(
   prompt: string,
-  channelId: string,
   cwd: string,
   config: Config,
-  sessions: SessionManager,
-  { forceNewSession = false }: { forceNewSession?: boolean } = {},
+  sessionId: string | undefined,
 ): Query {
-  const existingSessionId = forceNewSession
-    ? undefined
-    : sessions.getSessionId(channelId);
-  const isNewSession = !existingSessionId;
+  const isNewSession = !sessionId;
 
   console.log("[Claude] querry:", prompt);
   console.log("[Claude] session:",
-    isNewSession ? "NEW" : existingSessionId);
+    isNewSession ? "NEW" : sessionId);
 
   return query({
     prompt,
@@ -26,7 +20,7 @@ export function startClaudeQuery(
       cwd,
       model: config.claude.model,
       systemPrompt: isNewSession ? loadSystemPrompt() : undefined,
-      resume: existingSessionId ?? undefined,
+      resume: sessionId,
       maxTurns: 100,
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,

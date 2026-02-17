@@ -1,7 +1,6 @@
 import type { Message, TextChannel } from "discord.js";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { Config } from "../config.js";
-import type { SessionManager } from "../session-manager.js";
 import { extractTextFromAssistantMessage } from "../claude/response-parser.js";
 import { parseResponseText } from "../claude/response-line-parser.js";
 import {
@@ -21,7 +20,6 @@ export interface StreamContext {
   workdir: string;
   skill: string;
   config: Config;
-  sessions: SessionManager;
 }
 
 export interface StreamResult {
@@ -157,17 +155,11 @@ export async function streamToDiscord(
             line.offset,
           );
 
-          // Save current session so the next query resumes it
-          if (sessionId) {
-            ctx.sessions.setSessionId(ctx.channelId, sessionId);
-          }
-
           const feedbackStream = startClaudeQuery(
             historyText,
-            ctx.channelId,
             ctx.workdir,
             ctx.config,
-            ctx.sessions,
+            sessionId,
           );
 
           const feedbackResult = await streamToDiscord(
@@ -207,18 +199,11 @@ export async function streamToDiscord(
             attachments: execResult.attachments,
           });
 
-          // Save current session so the next query resumes it
-          if (sessionId) {
-            ctx.sessions.setSessionId(ctx.channelId, sessionId);
-          }
-
           const execStream = startClaudeQuery(
             execPrompt,
-            ctx.channelId,
             ctx.workdir,
             ctx.config,
-            ctx.sessions,
-            { forceNewSession: ctx.skill !== "" },
+            ctx.skill !== "" ? undefined : sessionId,
           );
 
           const execStreamResult = await streamToDiscord(
