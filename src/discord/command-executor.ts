@@ -103,7 +103,16 @@ export async function executeHistory(
     }
 
     // Fetch requested messages in batches of 30
-    const allMessages: { id: string; author: string; content: string; timestamp: Date; attachments: string[] }[] = [];
+    const botId = client.user!.id;
+    const allMessages: {
+      id: string;
+      author: string;
+      isBot: boolean;
+      content: string;
+      timestamp: Date;
+      attachments: string[];
+      reactions: string[];
+    }[] = [];
     let remaining = count;
 
     while (remaining > 0) {
@@ -115,12 +124,17 @@ export async function executeHistory(
       if (msgs.size === 0) break;
 
       for (const msg of msgs.values()) {
+        // リアクションの絵文字を取得
+        const reactions = msg.reactions.cache.map((r) => r.emoji.name ?? r.emoji.toString());
+
         allMessages.push({
           id: msg.id,
           author: msg.author.username,
+          isBot: msg.author.id === botId,
           content: msg.content,
           timestamp: msg.createdAt,
           attachments: msg.attachments.map((a) => a.url),
+          reactions,
         });
       }
       beforeId = msgs.lastKey();
@@ -134,7 +148,10 @@ export async function executeHistory(
         m.attachments.length > 0
           ? ` [attachments: ${m.attachments.join(", ")}]`
           : "";
-      return `[${ts}] ${m.author} (${m.id}): ${m.content}${attachmentInfo}`;
+      const reactionInfo =
+        m.reactions.length > 0 ? ` [reactions: ${m.reactions.join("")}]` : "";
+      const botTag = m.isBot ? " [BOT]" : "";
+      return `[${ts}] ${m.author}${botTag} (${m.id}): ${m.content}${attachmentInfo}${reactionInfo}`;
     });
 
     return [
