@@ -42,6 +42,29 @@ export async function executeDelete(
   }
 }
 
+export interface ExecResult {
+  id: string;
+  content: string;
+  attachments: string[];
+}
+
+export async function executeExec(
+  ctx: CommandContext,
+  messageId: string,
+): Promise<ExecResult | null> {
+  try {
+    const message = await ctx.channel.messages.fetch(messageId);
+    return {
+      id: message.id,
+      content: message.content,
+      attachments: message.attachments.map((a) => a.url),
+    };
+  } catch (err) {
+    console.error(`[!discord exec] Error fetching message ${messageId}:`, err);
+    return null;
+  }
+}
+
 export async function executeHistory(
   ctx: CommandContext,
   count: number,

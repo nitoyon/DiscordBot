@@ -115,6 +115,7 @@ export class ChannelQueue {
       channel,
       channelId: item.channelId,
       workdir: channelConfig.workdir,
+      skill: channelConfig.skill,
       config: this.config,
       sessions: this.sessions,
     });
@@ -150,6 +151,7 @@ export class ChannelQueue {
         channel,
         channelId: message.channelId,
         workdir: channelConfig.workdir,
+        skill: channelConfig.skill,
         config: this.config,
         sessions: this.sessions,
       });

@@ -8,8 +8,10 @@ import {
   executeReaction,
   executeDelete,
   executeHistory,
+  executeExec,
 } from "./command-executor.js";
 import { startClaudeQuery } from "../claude/query.js";
+import { buildMessagePrompt } from "../claude/prompt-builder.js";
 
 const MAX_RECURSION_DEPTH = 5;
 
@@ -17,6 +19,7 @@ export interface StreamContext {
   channel: TextChannel;
   channelId: string;
   workdir: string;
+  skill: string;
   config: Config;
   sessions: SessionManager;
 }
@@ -177,6 +180,57 @@ export async function streamToDiscord(
           }
 
           return { sessionId };
+        }
+
+        case "discord_exec": {
+          await flushPending(ctx.channel, pending);
+          pending = createPendingMessage();
+
+          if (depth >= MAX_RECURSION_DEPTH) {
+            console.error(
+              `[!discord exec] Max recursion depth (${MAX_RECURSION_DEPTH}) reached`,
+            );
+            break;
+          }
+
+          const execResult = await executeExec(cmdCtx, line.messageId);
+          if (!execResult) {
+            console.error(`[!discord exec] Failed to fetch message ${line.messageId}`);
+            break;
+          }
+
+          const execPrompt = buildMessagePrompt({
+            id: execResult.id,
+            skill: ctx.skill,
+            content: execResult.content,
+            channelId: ctx.channelId,
+            attachments: execResult.attachments,
+          });
+
+          // Save current session so the next query resumes it
+          if (sessionId) {
+            ctx.sessions.setSessionId(ctx.channelId, sessionId);
+          }
+
+          const execStream = startClaudeQuery(
+            execPrompt,
+            ctx.channelId,
+            ctx.workdir,
+            ctx.config,
+            ctx.sessions,
+            { forceNewSession: ctx.skill !== "" },
+          );
+
+          const execStreamResult = await streamToDiscord(
+            execStream,
+            ctx,
+            depth + 1,
+          );
+          if (execStreamResult.sessionId) {
+            sessionId = execStreamResult.sessionId;
+          }
+
+          break;
         }
       }
     }

@@ -14,12 +14,14 @@ export type ParsedLine =
       channelId: string | null;
       offset: number;
     }
-  | { type: "discord_delete"; messageId: string };
+  | { type: "discord_delete"; messageId: string }
+  | { type: "discord_exec"; messageId: string };
 
 const REACTION_RE = /^!discord\s+reaction\s+(\d+)\s+(-?)(.+)$/;
 const HISTORY_RE = /^!discord\s+history(.*)$/;
 const DELETE_RE =
   /^!discord\s+delete\s+(?:https:\/\/discord\.com\/channels\/\d+\/\d+\/(\d+)|(\d+))$/;
+const EXEC_RE = /^!discord\s+exec\s+(\d+)$/;
 const MEDIA_RE = /^media:\s+(.+)$/;
 const REACTIONS_RE = /^reactions:\s+(.+)$/;
 
@@ -81,6 +83,11 @@ function parseLine(line: string): ParsedLine {
   m = line.match(DELETE_RE);
   if (m) {
     return { type: "discord_delete", messageId: m[1] ?? m[2] };
+  }
+
+  m = line.match(EXEC_RE);
+  if (m) {
+    return { type: "discord_exec", messageId: m[1] };
   }
 
   m = line.match(MEDIA_RE);
