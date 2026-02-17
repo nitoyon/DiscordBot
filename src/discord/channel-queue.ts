@@ -209,8 +209,8 @@ export class ChannelQueue {
         await streamToDiscord(queryStream, {
           channel,
           channelId: channel.id,
-          workdir: channelConfig.workdir,
-          skill: channelConfig.skill,
+          workdir: initWorkdir,
+          skill: "",
           config: this.config,
         });
         console.log(`[Init] Completed init for #${channelConfig.name}`);

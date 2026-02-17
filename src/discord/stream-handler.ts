@@ -98,6 +98,7 @@ export async function streamToDiscord(
     }
 
     if (msg.type !== "assistant") continue;
+    sessionId = msg.session_id;
 
     const text = extractTextFromAssistantMessage(msg);
     if (!text.trim()) continue;
@@ -203,7 +204,7 @@ export async function streamToDiscord(
             execPrompt,
             ctx.workdir,
             ctx.config,
-            ctx.skill !== "" ? undefined : sessionId,
+            sessionId,
           );
 
           const execStreamResult = await streamToDiscord(
