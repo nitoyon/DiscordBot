@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, Partials, TextChannel } from "discord.js";
+import { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder, TextChannel } from "discord.js";
 import type { Config } from "../config.js";
 import type { SessionManager } from "../session-manager.js";
 import { ChannelQueue } from "./channel-queue.js";
@@ -22,8 +22,31 @@ export function createDiscordClient(
   client.on("clientReady", async () => {
     console.log(`Logged in as ${client.user?.tag}`);
 
+    // Register slash commands
+    const commands = [
+      new SlashCommandBuilder()
+        .setName("clear")
+        .setDescription("セッションを初期化します")
+        .toJSON(),
+    ];
+    const rest = new REST({ version: "10" }).setToken(config.discord.token);
+    try {
+      await rest.put(Routes.applicationCommands(client.user!.id), { body: commands });
+      console.log("Registered slash commands");
+    } catch (err) {
+      console.error("Failed to register slash commands:", err);
+    }
+
     // Run init skill for all channels with skill configured
     await channelQueue.runInit(client);
+  });
+
+  client.on("interactionCreate", async (interaction) => {
+    if (!interaction.isChatInputCommand()) return;
+    if (interaction.commandName === "clear") {
+      sessions.deleteSessionId(interaction.channelId);
+      await interaction.reply("セッションを初期化しました。");
+    }
   });
 
   client.on("messageCreate", (message) => {

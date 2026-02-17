@@ -19,6 +19,11 @@ export class SessionManager {
     this.save();
   }
 
+  deleteSessionId(channelId: string): void {
+    this.sessions.delete(channelId);
+    this.save();
+  }
+
   private load(): void {
     try {
       const raw = readFileSync(SESSION_FILE, "utf-8");
