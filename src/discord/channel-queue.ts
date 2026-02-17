@@ -1,4 +1,4 @@
-import type { Message, TextChannel } from "discord.js";
+import { type Client, type Message, TextChannel } from "discord.js";
 import type { Config } from "../config.js";
 import type { SessionManager } from "../session-manager.js";
 import { buildMessagePrompt, buildReactionPrompt } from "../claude/prompt-builder.js";
@@ -162,5 +162,70 @@ export class ChannelQueue {
     } finally {
       await cleanupFiles(attachmentPaths);
     }
+  }
+
+  /**
+   * Run init skill for all channels with skill configured.
+   * Called on bot startup to process messages that were posted while bot was offline.
+   */
+  async runInit(client: Client): Promise<void> {
+    // Filter channels with skill configured
+    const skillChannels = this.config.channels.filter((ch) => ch.skill !== "");
+    if (skillChannels.length === 0) {
+      console.log("[Init] No channels with skill configured, skipping init");
+      return;
+    }
+
+    console.log(`[Init] Running init for ${skillChannels.length} channel(s)`);
+
+    // This project's workdir (where init skill is located)
+    const initWorkdir = process.cwd();
+
+    for (const channelConfig of skillChannels) {
+      // Find the channel by name
+      const channel = client.channels.cache.find(
+        (ch) => ch instanceof TextChannel && ch.name === channelConfig.name,
+      ) as TextChannel | undefined;
+
+      if (!channel) {
+        console.log(`[Init] Channel "${channelConfig.name}" not found, skipping`);
+        continue;
+      }
+
+      console.log(`[Init] Running init for #${channelConfig.name} (${channel.id})`);
+
+      const prompt = buildMessagePrompt({
+        id: "init",
+        skill: "init",
+        content: `チャンネル <#${channel.id}> の未処理メッセージを確認してください`,
+        channelId: channel.id,
+        attachments: [],
+      });
+
+      const queryStream = startClaudeQuery(
+        prompt,
+        channel.id,
+        initWorkdir,
+        this.config,
+        this.sessions,
+        { forceNewSession: true },
+      );
+
+      try {
+        await streamToDiscord(queryStream, {
+          channel,
+          channelId: channel.id,
+          workdir: channelConfig.workdir,
+          skill: channelConfig.skill,
+          config: this.config,
+          sessions: this.sessions,
+        });
+        console.log(`[Init] Completed init for #${channelConfig.name}`);
+      } catch (error) {
+        console.error(`[Init] Error running init for #${channelConfig.name}:`, error);
+      }
+    }
+
+    console.log("[Init] Init completed for all channels");
   }
 }

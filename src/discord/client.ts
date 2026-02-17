@@ -19,8 +19,11 @@ export function createDiscordClient(
 
   const channelQueue = new ChannelQueue(config, sessions);
 
-  client.on("clientReady", () => {
+  client.on("clientReady", async () => {
     console.log(`Logged in as ${client.user?.tag}`);
+
+    // Run init skill for all channels with skill configured
+    await channelQueue.runInit(client);
   });
 
   client.on("messageCreate", (message) => {
