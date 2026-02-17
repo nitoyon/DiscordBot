@@ -197,7 +197,7 @@ export class ChannelQueue {
       const prompt = buildMessagePrompt({
         id: "init",
         skill: "init",
-        content: `チャンネル <#${channel.id}> の未処理メッセージを確認してください`,
+        content: `${channelConfig.name} <#${channel.id}>`,
         channelId: channel.id,
         attachments: [],
       });

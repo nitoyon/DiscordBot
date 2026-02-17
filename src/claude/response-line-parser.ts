@@ -66,6 +66,7 @@ function parseLine(line: string): ParsedLine {
 
   m = line.match(REACTION_RE);
   if (m) {
+    console.log(`[Discord] !discord reaction ${m[1]} ${m[2]}${m[3]}`);
     return {
       type: "discord_reaction",
       messageId: m[1],
@@ -77,29 +78,35 @@ function parseLine(line: string): ParsedLine {
   m = line.match(HISTORY_RE);
   if (m) {
     const { count, channelId, offset } = parseHistoryArgs(m[1]);
+    console.log(`[Discord] !discord history: channel=${channelId}, count=${count}, offset=${offset}`);
     return { type: "discord_history", count, channelId, offset };
   }
 
   m = line.match(DELETE_RE);
   if (m) {
+    console.log(`[Discord] !discord delete: ${m[1]}, ${m[2]}`);
     return { type: "discord_delete", messageId: m[1] ?? m[2] };
   }
 
   m = line.match(EXEC_RE);
   if (m) {
+    console.log(`[Discord] !discord exec ${m[1]}`);
     return { type: "discord_exec", messageId: m[1] };
   }
 
   m = line.match(MEDIA_RE);
   if (m) {
+    console.log(`[Discord] media ${m[1]}`);
     return { type: "media", filePath: m[1].trim() };
   }
 
   m = line.match(REACTIONS_RE);
   if (m) {
+    console.log(`[Discord] reactions ${m[1]}`);
     return { type: "reactions", emojis: splitEmojis(m[1]) };
   }
 
+  console.log(`[Discord] text ${line}`);
   return { type: "text", content: line };
 }
 
