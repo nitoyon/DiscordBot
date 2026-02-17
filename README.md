@@ -46,3 +46,7 @@ npm run lint
 ## License
 
 MIT
+
+## 謝辞
+
+https://github.com/karaage0703/xangi の設計思想を参照させていただいています。
