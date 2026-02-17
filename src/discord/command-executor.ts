@@ -2,6 +2,7 @@ import { TextChannel } from "discord.js";
 
 export interface CommandContext {
   channel: TextChannel;
+  allowedUserId?: string;
 }
 
 export async function executeReaction(
@@ -124,6 +125,11 @@ export async function executeHistory(
       if (msgs.size === 0) break;
 
       for (const msg of msgs.values()) {
+        // 対象ユーザーまたはボットのメッセージのみを含める
+        if (ctx.allowedUserId && msg.author.id !== ctx.allowedUserId && msg.author.id !== botId) {
+          continue;
+        }
+
         // リアクションの絵文字を取得
         const reactions = msg.reactions.cache.map((r) => r.emoji.name ?? r.emoji.toString());
 

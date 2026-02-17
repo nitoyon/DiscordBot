@@ -106,7 +106,7 @@ export async function streamToDiscord(
 
     const lines = parseResponseText(text);
     let pending = createPendingMessage();
-    const cmdCtx = { channel: ctx.channel };
+    const cmdCtx = { channel: ctx.channel, allowedUserId: ctx.config.discord.user };
 
     for (const line of lines) {
       switch (line.type) {
