@@ -3,7 +3,7 @@ import { extractTextFromAssistantMessage } from "./response-parser.js";
 import { parseResponseText, type ParsedLine } from "./response-line-parser.js";
 import { startClaudeQuery } from "./query.js";
 
-const MAX_RECURSION_DEPTH = 5;
+const MAX_LOOP_COUNT = 5;
 
 /**
  * Handles parsed lines from Claude's response.
@@ -27,7 +27,23 @@ export class ClaudeSession {
     this.sessionId = sessionId;
   }
 
-  async run(prompt: string, depth = 0): Promise<void> {
+  async run(prompt: string): Promise<void> {
+    let prompts = [prompt];
+
+    for (let i = 0; i < MAX_LOOP_COUNT; i++) {
+      const nextPrompts: string[] = [];
+      for (const p of prompts) {
+        const feedbacks = await this.handlePrompt(p);
+        nextPrompts.push(...feedbacks);
+      }
+      prompts = nextPrompts;
+      if (prompts.length === 0) return;
+    }
+
+    console.error(`[ClaudeSession] Max loop count (${MAX_LOOP_COUNT}) reached`);
+  }
+
+  private async handlePrompt(prompt: string): Promise<string[]> {
     const stream = startClaudeQuery(prompt, this.workdir, this.config, this.sessionId);
 
     for await (const msg of stream) {
@@ -54,15 +70,10 @@ export class ClaudeSession {
       const lines = parseResponseText(text);
       const feedbackPrompt = await this.handlers.handleLines(lines);
       if (feedbackPrompt !== undefined) {
-        if (depth >= MAX_RECURSION_DEPTH) {
-          console.error(
-            `[ClaudeSession] Max recursion depth (${MAX_RECURSION_DEPTH}) reached`,
-          );
-          return;
-        }
-        await this.run(feedbackPrompt, depth + 1);
-        return;
+        return [feedbackPrompt];
       }
     }
+
+    return [];
   }
 }
