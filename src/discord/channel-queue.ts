@@ -2,9 +2,8 @@ import { type Client, type Message, TextChannel } from "discord.js";
 import type { Config } from "../config.js";
 import type { SessionManager } from "../session-manager.js";
 import { buildMessagePrompt, buildReactionPrompt } from "../claude/prompt-builder.js";
-
-import { startClaudeQuery } from "../claude/query.js";
-import { streamToDiscord } from "./stream-handler.js";
+import { ClaudeSession } from "../claude/session.js";
+import { createDiscordHandler } from "./stream-handler.js";
 import { downloadAttachments, cleanupFiles } from "./attachment-downloader.js";
 
 interface ChannelConfig { name: string; skill: string; workdir: string }
@@ -115,24 +114,19 @@ export class ChannelQueue {
       channelId: item.channelId,
     });
 
-    const queryStream = startClaudeQuery(
-      prompt,
-      channelConfig.workdir,
+    const session = new ClaudeSession(
       this.config,
+      channelConfig.workdir,
+      createDiscordHandler(channel, this.config, (msg) =>
+        this.enqueueItem({ message: msg, channel, channelConfig, type: "message" }),
+      ),
       this.sessions.getSessionId(item.channelId),
     );
 
-    const { sessionId } = await streamToDiscord(queryStream, {
-      channel,
-      channelId: item.channelId,
-      workdir: channelConfig.workdir,
-      skill: channelConfig.skill,
-      config: this.config,
-      enqueue: (msg) => this.enqueueItem({ message: msg, channel, channelConfig, type: "message" }),
-    });
+    await session.run(prompt);
 
-    if (sessionId) {
-      this.sessions.setSessionId(item.channelId, sessionId);
+    if (session.sessionId) {
+      this.sessions.setSessionId(item.channelId, session.sessionId);
     }
   }
 
@@ -149,24 +143,19 @@ export class ChannelQueue {
         attachments: attachmentPaths,
       });
 
-      const queryStream = startClaudeQuery(
-        prompt,
-        channelConfig.workdir,
+      const session = new ClaudeSession(
         this.config,
+        channelConfig.workdir,
+        createDiscordHandler(channel, this.config, (msg) =>
+          this.enqueueItem({ message: msg, channel, channelConfig, type: "message" }),
+        ),
         channelConfig.skill !== "" ? undefined : this.sessions.getSessionId(message.channelId),
       );
 
-      const { sessionId } = await streamToDiscord(queryStream, {
-        channel,
-        channelId: message.channelId,
-        workdir: channelConfig.workdir,
-        skill: channelConfig.skill,
-        config: this.config,
-        enqueue: (msg) => this.enqueueItem({ message: msg, channel, channelConfig, type: "message" }),
-      });
+      await session.run(prompt);
 
-      if (sessionId) {
-        this.sessions.setSessionId(message.channelId, sessionId);
+      if (session.sessionId) {
+        this.sessions.setSessionId(message.channelId, session.sessionId);
       }
     } finally {
       await cleanupFiles(attachmentPaths);
@@ -211,24 +200,16 @@ export class ChannelQueue {
         attachments: [],
       });
 
-      const queryStream = startClaudeQuery(
-        prompt,
-        initWorkdir,
+      const session = new ClaudeSession(
         this.config,
-        undefined,
+        initWorkdir,
+        createDiscordHandler(channel, this.config, (msg) =>
+          this.enqueueItem({ message: msg, channel, channelConfig, type: "message" }),
+        ),
       );
 
       try {
-        await streamToDiscord(queryStream, {
-          channel,
-          channelId: channel.id,
-          workdir: initWorkdir,
-          skill: "",
-          config: this.config,
-          enqueue: (msg) => {
-            this.enqueueItem({ message: msg, channel, channelConfig, type: "message" });
-          },
-        });
+        await session.run(prompt);
         console.log(`[Init] Completed init for #${channelConfig.name}`);
       } catch (error) {
         console.error(`[Init] Error running init for #${channelConfig.name}:`, error);

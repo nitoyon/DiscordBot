@@ -1,30 +1,13 @@
 import type { Message, TextChannel } from "discord.js";
-import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { ParsedLine } from "../claude/response-line-parser.js";
+import type { ClaudeSessionHandlers } from "../claude/session.js";
 import type { Config } from "../config.js";
-import { extractTextFromAssistantMessage } from "../claude/response-parser.js";
-import { parseResponseText } from "../claude/response-line-parser.js";
 import {
   executeReaction,
   executeDelete,
   executeHistory,
   executeExec,
 } from "./command-executor.js";
-import { startClaudeQuery } from "../claude/query.js";
-
-const MAX_RECURSION_DEPTH = 5;
-
-export interface StreamContext {
-  channel: TextChannel;
-  channelId: string;
-  workdir: string;
-  skill: string;
-  config: Config;
-  enqueue?: (message: Message) => void;
-}
-
-export interface StreamResult {
-  sessionId: string | undefined;
-}
 
 interface PendingMessage {
   textLines: string[];
@@ -58,7 +41,6 @@ async function flushPending(
     }
   }
 
-  // If we only had media with no text
   if (chunks.length === 0 && pending.mediaFiles.length > 0) {
     lastMessage = await channel.send({ files: pending.mediaFiles });
   }
@@ -75,134 +57,82 @@ async function flushPending(
 }
 
 /**
- * Consume an async generator of SDKMessages, parse Claude's response,
- * execute !discord commands, and stream text to Discord.
- *
- * When !discord history is encountered, results are fed back to Claude
- * as a new query (same session), creating a feedback loop.
+ * Create a ClaudeSessionHandlers implementation that outputs to Discord.
+ * Buffers text/media/reactions and sends them as Discord messages.
+ * Executes !discord commands against the given channel.
+ * Returns history text for !discord history to feed back to ClaudeSession.
  */
-export async function streamToDiscord(
-  messageStream: AsyncGenerator<SDKMessage, void>,
-  ctx: StreamContext,
-  depth = 0,
-): Promise<StreamResult> {
-  let sessionId: string | undefined;
+export function createDiscordHandler(
+  channel: TextChannel,
+  config: Config,
+  enqueue: (message: Message) => void,
+): ClaudeSessionHandlers {
+  const cmdCtx = { channel, allowedUserId: config.discord.user };
 
-  for await (const msg of messageStream) {
-    if (msg.type === "result") {
-      sessionId = msg.session_id;
-      if (msg.subtype !== "success") {
-        console.error(`Claude query error (${msg.subtype})`);
-      }
-      continue;
-    }
+  return {
+    async handleLines(lines: ParsedLine[]): Promise<string | undefined> {
+      let pending = createPendingMessage();
 
-    if (msg.type !== "assistant") continue;
-    sessionId = msg.session_id;
+      for (const line of lines) {
+        switch (line.type) {
+          case "text":
+            pending.textLines.push(line.content);
+            break;
 
-    const text = extractTextFromAssistantMessage(msg);
-    if (!text.trim()) continue;
+          case "media":
+            pending.mediaFiles.push(line.filePath);
+            break;
 
-    const lines = parseResponseText(text);
-    let pending = createPendingMessage();
-    const cmdCtx = { channel: ctx.channel, allowedUserId: ctx.config.discord.user };
+          case "reactions":
+            pending.reactions.push(...line.emojis);
+            break;
 
-    for (const line of lines) {
-      switch (line.type) {
-        case "text":
-          pending.textLines.push(line.content);
-          break;
+          case "discord_nop":
+            break;
 
-        case "media":
-          pending.mediaFiles.push(line.filePath);
-          break;
+          case "discord_reaction":
+            await flushPending(channel, pending);
+            pending = createPendingMessage();
+            await executeReaction(cmdCtx, line.messageId, line.emoji, line.remove);
+            break;
 
-        case "reactions":
-          pending.reactions.push(...line.emojis);
-          break;
+          case "discord_delete":
+            await flushPending(channel, pending);
+            pending = createPendingMessage();
+            await executeDelete(cmdCtx, line.messageId);
+            break;
 
-        case "discord_nop":
-          break;
-
-        case "discord_reaction":
-          await flushPending(ctx.channel, pending);
-          pending = createPendingMessage();
-          await executeReaction(
-            cmdCtx,
-            line.messageId,
-            line.emoji,
-            line.remove,
-          );
-          break;
-
-        case "discord_delete":
-          await flushPending(ctx.channel, pending);
-          pending = createPendingMessage();
-          await executeDelete(cmdCtx, line.messageId);
-          break;
-
-        case "discord_history": {
-          await flushPending(ctx.channel, pending);
-          pending = createPendingMessage();
-
-          if (depth >= MAX_RECURSION_DEPTH) {
-            console.error(
-              `[!discord history] Max recursion depth (${MAX_RECURSION_DEPTH}) reached`,
+          case "discord_history": {
+            await flushPending(channel, pending);
+            const historyText = await executeHistory(
+              cmdCtx,
+              line.count,
+              line.channelId,
+              line.offset,
             );
+            return historyText;
+          }
+
+          case "discord_exec": {
+            await flushPending(channel, pending);
+            pending = createPendingMessage();
+            const execMessage = await executeExec(cmdCtx, line.messageId);
+            if (!execMessage) {
+              console.error(
+                `[!discord exec] Failed to fetch message ${line.messageId}`,
+              );
+              break;
+            }
+            enqueue(execMessage);
             break;
           }
-
-          const historyText = await executeHistory(
-            cmdCtx,
-            line.count,
-            line.channelId,
-            line.offset,
-          );
-
-          const feedbackStream = startClaudeQuery(
-            historyText,
-            ctx.workdir,
-            ctx.config,
-            sessionId,
-          );
-
-          const feedbackResult = await streamToDiscord(
-            feedbackStream,
-            ctx,
-            depth + 1,
-          );
-          if (feedbackResult.sessionId) {
-            sessionId = feedbackResult.sessionId;
-          }
-
-          return { sessionId };
-        }
-
-        case "discord_exec": {
-          await flushPending(ctx.channel, pending);
-          pending = createPendingMessage();
-
-          const execMessage = await executeExec(cmdCtx, line.messageId);
-          if (!execMessage) {
-            console.error(`[!discord exec] Failed to fetch message ${line.messageId}`);
-            break;
-          }
-
-          if (ctx.enqueue) {
-            ctx.enqueue(execMessage);
-          } else {
-            console.error(`[!discord exec] No enqueue function provided`);
-          }
-
-          break;
         }
       }
-    }
 
-    await flushPending(ctx.channel, pending);
-  }
-
-  return { sessionId };
+      await flushPending(channel, pending);
+      return undefined;
+    },
+  };
 }
 
 export function splitMessage(text: string, maxLength: number): string[] {
