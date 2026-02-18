@@ -16,6 +16,7 @@ export interface ClaudeSessionHandlers {
 
 export class ClaudeSession {
   sessionId: string | undefined;
+  onSessionChange?: (sessionId: string) => void;
 
   constructor(
     private config: Config,
@@ -31,7 +32,10 @@ export class ClaudeSession {
 
     for await (const msg of stream) {
       if (msg.type === "result") {
-        if (msg.session_id) this.sessionId = msg.session_id;
+        if (this.sessionId !== msg.session_id) {
+          this.sessionId = msg.session_id;
+          this.onSessionChange?.(msg.session_id);
+        }
         if (msg.subtype !== "success") {
           console.error(`Claude query error (${msg.subtype})`);
         }
@@ -39,7 +43,10 @@ export class ClaudeSession {
       }
 
       if (msg.type !== "assistant") continue;
-      if (msg.session_id) this.sessionId = msg.session_id;
+      if (this.sessionId !== msg.session_id) {
+        this.sessionId = msg.session_id;
+        this.onSessionChange?.(msg.session_id);
+      }
 
       const text = extractTextFromAssistantMessage(msg);
       if (!text.trim()) continue;

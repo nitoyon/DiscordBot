@@ -122,12 +122,9 @@ export class ChannelQueue {
       ),
       this.sessions.getSessionId(item.channelId),
     );
+    session.onSessionChange = (id) => this.sessions.setSessionId(item.channelId, id);
 
     await session.run(prompt);
-
-    if (session.sessionId) {
-      this.sessions.setSessionId(item.channelId, session.sessionId);
-    }
   }
 
   private async processMessage(item: QueuedTextMessage): Promise<void> {
@@ -151,12 +148,11 @@ export class ChannelQueue {
         ),
         channelConfig.skill !== "" ? undefined : this.sessions.getSessionId(message.channelId),
       );
+      if (channelConfig.skill === "") {
+        session.onSessionChange = (id) => this.sessions.setSessionId(message.channelId, id);
+      }
 
       await session.run(prompt);
-
-      if (session.sessionId) {
-        this.sessions.setSessionId(message.channelId, session.sessionId);
-      }
     } finally {
       await cleanupFiles(attachmentPaths);
     }
