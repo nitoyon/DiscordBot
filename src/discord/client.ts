@@ -50,22 +50,7 @@ export function createDiscordClient(
   });
 
   client.on("messageCreate", (message) => {
-    if (message.author.bot) return;
-    if (message.author.id !== config.discord.user.toString()) return;
-
-    if (!(message.channel instanceof TextChannel)) return;
-    const channel = message.channel;
-
-    const channelConfig = config.channels.find(
-      (ch) => ch.name === channel.name,
-    );
-    if (!channelConfig) return;
-
-    console.log(
-      `[Discord] #${channel.name} ${message.author.username}: ${message.content}`,
-    );
-
-    channelQueue.enqueueMessage({ message, channel, channelConfig });
+    channelQueue.enqueueMessage(message);
   });
 
   client.on("messageReactionAdd", async (reaction, user) => {

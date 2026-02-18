@@ -38,8 +38,23 @@ export class ChannelQueue {
     this.sessions = sessions;
   }
 
-  enqueueMessage(item: Omit<QueuedTextMessage, "type">): void {
-    this.enqueueItem({ ...item, type: "message" });
+  enqueueMessage(message: Message): void {
+    if (message.author.bot) return;
+    if (message.author.id !== this.config.discord.user.toString()) return;
+
+    if (!(message.channel instanceof TextChannel)) return;
+    const channel = message.channel;
+
+    const channelConfig = this.config.channels.find(
+      (ch) => ch.name === channel.name,
+    );
+    if (!channelConfig) return;
+
+    console.log(
+      `[Discord] #${channel.name} ${message.author.username}: ${message.content}`,
+    );
+
+    this.enqueueItem({ message, channel, channelConfig, type: "message" });
   }
 
   enqueueReaction(item: Omit<QueuedReaction, "type">): void {
@@ -117,7 +132,7 @@ export class ChannelQueue {
       workdir: channelConfig.workdir,
       skill: channelConfig.skill,
       config: this.config,
-      enqueue: (msg) => this.enqueueMessage({ message: msg, channel, channelConfig }),
+      enqueue: (msg) => this.enqueueItem({ message: msg, channel, channelConfig, type: "message" }),
     });
 
     if (sessionId) {
@@ -151,7 +166,7 @@ export class ChannelQueue {
         workdir: channelConfig.workdir,
         skill: channelConfig.skill,
         config: this.config,
-        enqueue: (msg) => this.enqueueMessage({ message: msg, channel, channelConfig }),
+        enqueue: (msg) => this.enqueueItem({ message: msg, channel, channelConfig, type: "message" }),
       });
 
       if (sessionId) {
@@ -215,7 +230,7 @@ export class ChannelQueue {
           skill: "",
           config: this.config,
           enqueue: (msg) => {
-            this.enqueueMessage({ message: msg, channel, channelConfig });
+            this.enqueueItem({ message: msg, channel, channelConfig, type: "message" });
           },
         });
         console.log(`[Init] Completed init for #${channelConfig.name}`);
