@@ -70,27 +70,21 @@ export class ChannelQueue {
     this.queues.get(channelId)!.push(item);
 
     if (!this.processing.get(channelId)) {
-      this.processLoop(channelId).catch((err) => {
-        console.error(`[${channelId}] Fatal processLoop error:`, err);
-        this.processing.set(channelId, false);
-      });
+      this.processing.set(channelId, true);
+      setImmediate(() => this.processNext(channelId));
     }
   }
 
-  private async processLoop(channelId: string): Promise<void> {
-    this.processing.set(channelId, true);
+  private processNext(channelId: string): void {
+    const queue = this.queues.get(channelId);
+    if (!queue || queue.length === 0) {
+      this.processing.set(channelId, false);
+      return;
+    }
 
-    while (true) {
-      const queue = this.queues.get(channelId);
-      if (!queue || queue.length === 0) {
-        this.processing.set(channelId, false);
-        return;
-      }
-
-      const item = queue.shift()!;
-      try {
-        await this.processItem(item);
-      } catch (error) {
+    const item = queue.shift()!;
+    this.processItem(item)
+      .catch(async (error) => {
         console.error(
           `[${item.channelConfig.name}] Processing error:`,
           error,
@@ -98,8 +92,10 @@ export class ChannelQueue {
         await item.channel
           .send("Error processing your request.")
           .catch(() => {});
-      }
-    }
+      })
+      .finally(() => {
+        setImmediate(() => this.processNext(channelId));
+      });
   }
 
   private async processItem(item: QueuedItem): Promise<void> {
