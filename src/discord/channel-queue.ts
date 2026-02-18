@@ -117,6 +117,7 @@ export class ChannelQueue {
       workdir: channelConfig.workdir,
       skill: channelConfig.skill,
       config: this.config,
+      enqueue: (msg) => this.enqueue({ message: msg, channel, channelConfig }),
     });
 
     if (sessionId) {
@@ -150,6 +151,7 @@ export class ChannelQueue {
         workdir: channelConfig.workdir,
         skill: channelConfig.skill,
         config: this.config,
+        enqueue: (msg) => this.enqueue({ message: msg, channel, channelConfig }),
       });
 
       if (sessionId) {
@@ -212,6 +214,9 @@ export class ChannelQueue {
           workdir: initWorkdir,
           skill: "",
           config: this.config,
+          enqueue: (msg) => {
+            this.enqueue({ message: msg, channel, channelConfig });
+          },
         });
         console.log(`[Init] Completed init for #${channelConfig.name}`);
       } catch (error) {

@@ -15,8 +15,10 @@ export type ParsedLine =
       offset: number;
     }
   | { type: "discord_delete"; messageId: string }
-  | { type: "discord_exec"; messageId: string };
+  | { type: "discord_exec"; messageId: string }
+  | { type: "discord_nop" };
 
+const NOP_RE = /^!discord\s+nop$/;
 const REACTION_RE = /^!discord\s+reaction\s+(\d+)\s+(-?)(.+)$/;
 const HISTORY_RE = /^!discord\s+history(.*)$/;
 const DELETE_RE =
@@ -63,6 +65,11 @@ function parseHistoryArgs(argsStr: string): {
 
 function parseLine(line: string): ParsedLine {
   let m: RegExpMatchArray | null;
+
+  if (NOP_RE.test(line)) {
+    console.log(`[Discord] !discord nop`);
+    return { type: "discord_nop" };
+  }
 
   m = line.match(REACTION_RE);
   if (m) {

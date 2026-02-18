@@ -10,7 +10,6 @@ import {
   executeExec,
 } from "./command-executor.js";
 import { startClaudeQuery } from "../claude/query.js";
-import { buildMessagePrompt } from "../claude/prompt-builder.js";
 
 const MAX_RECURSION_DEPTH = 5;
 
@@ -20,6 +19,7 @@ export interface StreamContext {
   workdir: string;
   skill: string;
   config: Config;
+  enqueue?: (message: Message) => void;
 }
 
 export interface StreamResult {
@@ -121,6 +121,9 @@ export async function streamToDiscord(
           pending.reactions.push(...line.emojis);
           break;
 
+        case "discord_nop":
+          break;
+
         case "discord_reaction":
           await flushPending(ctx.channel, pending);
           pending = createPendingMessage();
@@ -179,41 +182,16 @@ export async function streamToDiscord(
           await flushPending(ctx.channel, pending);
           pending = createPendingMessage();
 
-          if (depth >= MAX_RECURSION_DEPTH) {
-            console.error(
-              `[!discord exec] Max recursion depth (${MAX_RECURSION_DEPTH}) reached`,
-            );
-            break;
-          }
-
-          const execResult = await executeExec(cmdCtx, line.messageId);
-          if (!execResult) {
+          const execMessage = await executeExec(cmdCtx, line.messageId);
+          if (!execMessage) {
             console.error(`[!discord exec] Failed to fetch message ${line.messageId}`);
             break;
           }
 
-          const execPrompt = buildMessagePrompt({
-            id: execResult.id,
-            skill: ctx.skill,
-            content: execResult.content,
-            channelId: ctx.channelId,
-            attachments: execResult.attachments,
-          });
-
-          const execStream = startClaudeQuery(
-            execPrompt,
-            ctx.workdir,
-            ctx.config,
-            sessionId,
-          );
-
-          const execStreamResult = await streamToDiscord(
-            execStream,
-            ctx,
-            depth + 1,
-          );
-          if (execStreamResult.sessionId) {
-            sessionId = execStreamResult.sessionId;
+          if (ctx.enqueue) {
+            ctx.enqueue(execMessage);
+          } else {
+            console.error(`[!discord exec] No enqueue function provided`);
           }
 
           break;

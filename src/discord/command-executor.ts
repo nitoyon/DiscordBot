@@ -1,4 +1,4 @@
-import { TextChannel } from "discord.js";
+import { Message, TextChannel } from "discord.js";
 
 export interface CommandContext {
   channel: TextChannel;
@@ -43,23 +43,12 @@ export async function executeDelete(
   }
 }
 
-export interface ExecResult {
-  id: string;
-  content: string;
-  attachments: string[];
-}
-
 export async function executeExec(
   ctx: CommandContext,
   messageId: string,
-): Promise<ExecResult | null> {
+): Promise<Message | null> {
   try {
-    const message = await ctx.channel.messages.fetch(messageId);
-    return {
-      id: message.id,
-      content: message.content,
-      attachments: message.attachments.map((a) => a.url),
-    };
+    return await ctx.channel.messages.fetch(messageId);
   } catch (err) {
     console.error(`[!discord exec] Error fetching message ${messageId}:`, err);
     return null;
