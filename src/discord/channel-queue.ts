@@ -38,7 +38,7 @@ export class ChannelQueue {
     this.sessions = sessions;
   }
 
-  enqueue(item: Omit<QueuedTextMessage, "type">): void {
+  enqueueMessage(item: Omit<QueuedTextMessage, "type">): void {
     this.enqueueItem({ ...item, type: "message" });
   }
 
@@ -117,7 +117,7 @@ export class ChannelQueue {
       workdir: channelConfig.workdir,
       skill: channelConfig.skill,
       config: this.config,
-      enqueue: (msg) => this.enqueue({ message: msg, channel, channelConfig }),
+      enqueue: (msg) => this.enqueueMessage({ message: msg, channel, channelConfig }),
     });
 
     if (sessionId) {
@@ -151,7 +151,7 @@ export class ChannelQueue {
         workdir: channelConfig.workdir,
         skill: channelConfig.skill,
         config: this.config,
-        enqueue: (msg) => this.enqueue({ message: msg, channel, channelConfig }),
+        enqueue: (msg) => this.enqueueMessage({ message: msg, channel, channelConfig }),
       });
 
       if (sessionId) {
@@ -215,7 +215,7 @@ export class ChannelQueue {
           skill: "",
           config: this.config,
           enqueue: (msg) => {
-            this.enqueue({ message: msg, channel, channelConfig });
+            this.enqueueMessage({ message: msg, channel, channelConfig });
           },
         });
         console.log(`[Init] Completed init for #${channelConfig.name}`);

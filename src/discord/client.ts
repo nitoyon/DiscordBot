@@ -65,7 +65,7 @@ export function createDiscordClient(
       `[Discord] #${channel.name} ${message.author.username}: ${message.content}`,
     );
 
-    channelQueue.enqueue({ message, channel, channelConfig });
+    channelQueue.enqueueMessage({ message, channel, channelConfig });
   });
 
   client.on("messageReactionAdd", async (reaction, user) => {
