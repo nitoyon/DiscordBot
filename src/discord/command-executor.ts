@@ -55,6 +55,56 @@ export async function executeExec(
   }
 }
 
+export async function executeSend(
+  ctx: CommandContext,
+  message: string,
+): Promise<void> {
+  try {
+    await ctx.channel.send(message);
+  } catch (err) {
+    console.error(`[!discord send] Error:`, err);
+  }
+}
+
+export async function executeSendto(
+  ctx: CommandContext,
+  channelRef: string,
+  message: string,
+): Promise<void> {
+  try {
+    const client = ctx.channel.client;
+
+    // チャンネルIDの場合は直接取得、チャンネル名の場合はギルド内で検索
+    let targetChannel: TextChannel | null = null;
+
+    // 数字のみならIDとして扱う
+    if (/^\d+$/.test(channelRef)) {
+      const fetched = await client.channels.fetch(channelRef);
+      if (fetched instanceof TextChannel) {
+        targetChannel = fetched;
+      }
+    } else {
+      // チャンネル名で検索（現在のギルドから）
+      const guild = ctx.channel.guild;
+      const found = guild.channels.cache.find(
+        (ch) => ch.name === channelRef && ch instanceof TextChannel
+      );
+      if (found instanceof TextChannel) {
+        targetChannel = found;
+      }
+    }
+
+    if (!targetChannel) {
+      console.error(`[!discord sendto] Channel not found: ${channelRef}`);
+      return;
+    }
+
+    await targetChannel.send(message);
+  } catch (err) {
+    console.error(`[!discord sendto] Error:`, err);
+  }
+}
+
 export async function executeHistory(
   ctx: CommandContext,
   count: number,

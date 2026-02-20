@@ -7,6 +7,8 @@ import {
   executeDelete,
   executeHistory,
   executeExec,
+  executeSend,
+  executeSendto,
 } from "./command-executor.js";
 
 interface PendingMessage {
@@ -126,6 +128,18 @@ export function createDiscordHandler(
             enqueue(execMessage);
             break;
           }
+
+          case "discord_send":
+            await flushPending(channel, pending);
+            pending = createPendingMessage();
+            await executeSend(cmdCtx, line.message);
+            break;
+
+          case "discord_sendto":
+            await flushPending(channel, pending);
+            pending = createPendingMessage();
+            await executeSendto(cmdCtx, line.channel, line.message);
+            break;
         }
       }
 
