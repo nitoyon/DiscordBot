@@ -6,6 +6,7 @@ import { startClaudeQuery } from "./query.js";
 const MAX_LOOP_COUNT = 5;
 
 function formatToolInput(toolName: string, input: unknown): string {
+  console.log("tool", toolName);
   if (toolName === "Bash" && typeof input === "object" && input !== null) {
     const cmd = (input as { command?: string }).command ?? "";
     const truncated = cmd.length > 300 ? cmd.slice(0, 300) + "..." : cmd;
@@ -56,6 +57,7 @@ export class ClaudeSession {
 
   private async handlePrompt(prompt: string): Promise<string[]> {
     const stream = startClaudeQuery(prompt, this.workdir, this.config, this.sessionId);
+    const bashToolUseIds = new Set<string>();
 
     for await (const msg of stream) {
       if (msg.type === "result") {
@@ -70,11 +72,13 @@ export class ClaudeSession {
       }
 
       // tool_result をログ出力
-      if (msg.type === "user" && msg.parent_tool_use_id && this.onLog) {
+      if (msg.type === "user" && this.onLog) {
         const content = (msg.message as { content: unknown }).content;
         if (Array.isArray(content)) {
           for (const block of content as Array<{ type?: string; content?: unknown }>) {
             if (block.type === "tool_result") {
+              const toolUseId = (block as { tool_use_id?: string }).tool_use_id ?? "";
+              if (!bashToolUseIds.has(toolUseId)) continue;
               const output =
                 typeof block.content === "string"
                   ? block.content
@@ -98,8 +102,11 @@ export class ClaudeSession {
       if (this.onLog) {
         const content = (msg.message as { content: unknown[] }).content;
         for (const block of content as Array<{ type?: string; name?: string; input?: unknown }>) {
-          if (block.type === "tool_use") {
+          if (block.type === "tool_use" && block.name === "Bash") {
+            const toolUseId = (block as { id?: string }).id ?? "";
+            bashToolUseIds.add(toolUseId);
             const inputStr = formatToolInput(block.name ?? "", block.input);
+            console.log(`**${block.name}**: ${inputStr}`);
             await this.onLog(`**${block.name}**: ${inputStr}`);
           }
         }
