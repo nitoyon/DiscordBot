@@ -22,7 +22,7 @@ Claude API → DiscordBot → Discord API
            ←
 ```
 
-Claude API からのレスポンス (通常メッセージ)
+Claude API からのレスポンス (!discord send / !discord sendto)
 
 ```
 Claude API → DiscordBot → Discord API → ユーザー
@@ -54,7 +54,7 @@ Claude API → DiscordBot → Discord API → ユーザー
 5. レスポンス処理
    - メッセージ取得
    - ファイル添付抽出
-   - !discord 検出・実行 (この場合は 4. に戻る)
+   - !discord 検出・実行 (コマンドによっては 4. に戻る)
    ↓
 6. ユーザーに返信
 ```
