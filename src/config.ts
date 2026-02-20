@@ -3,7 +3,7 @@ import { resolve } from "path";
 import { parse } from "yaml";
 
 export interface Config {
-  discord: { token: string; user: string };
+  discord: { token: string; user: string; logChannel?: string };
   claude: { model: string };
   channels: { name: string; skill: string; workdir: string }[];
 }

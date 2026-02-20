@@ -31,10 +31,18 @@ export class ChannelQueue {
   private processing = new Map<string, boolean>();
   private config: Config;
   private sessions: SessionManager;
+  private logChannel: TextChannel | undefined;
 
   constructor(config: Config, sessions: SessionManager) {
     this.config = config;
     this.sessions = sessions;
+  }
+
+  /**
+   * ログチャンネルをセットする
+   */
+  setLogChannel(channel: TextChannel): void {
+    this.logChannel = channel;
   }
 
   enqueueMessage(message: Message): void {
@@ -117,9 +125,11 @@ export class ChannelQueue {
     const session = new ClaudeSession(
       this.config,
       channelConfig.workdir,
-      createDiscordHandler(channel, this.config, (msg) =>
-        this.enqueueItem({ message: msg, channel, channelConfig, type: "message" }),
-      ),
+      createDiscordHandler({
+        channel,
+        config: this.config,
+        enqueue: (msg) => this.enqueueItem({ message: msg, channel, channelConfig, type: "message" }),
+      }),
       this.sessions.getSessionId(item.channelId),
     );
     session.onSessionChange = (id) => this.sessions.setSessionId(item.channelId, id);
@@ -129,6 +139,14 @@ export class ChannelQueue {
 
   private async processMessage(item: QueuedTextMessage): Promise<void> {
     const { message, channel, channelConfig } = item;
+    const isSkillMode = channelConfig.skill !== "";
+
+    // スキルモード時はログチャンネルにスキル実行開始を通知
+    if (isSkillMode && this.logChannel) {
+      const guildId = channel.guild.id;
+      const messageUrl = `https://discord.com/channels/${guildId}/${channel.id}/${message.id}`;
+      await this.logChannel.send(`${messageUrl} に対してスキル \`/${channelConfig.skill}\` を実行...`);
+    }
 
     const attachmentPaths = await downloadAttachments(message.attachments, channelConfig.workdir);
     try {
@@ -143,12 +161,16 @@ export class ChannelQueue {
       const session = new ClaudeSession(
         this.config,
         channelConfig.workdir,
-        createDiscordHandler(channel, this.config, (msg) =>
-          this.enqueueItem({ message: msg, channel, channelConfig, type: "message" }),
-        ),
-        channelConfig.skill !== "" ? undefined : this.sessions.getSessionId(message.channelId),
+        createDiscordHandler({
+          channel,
+          isSkillMode,
+          logChannel: this.logChannel,
+          config: this.config,
+          enqueue: (msg) => this.enqueueItem({ message: msg, channel, channelConfig, type: "message" }),
+        }),
+        isSkillMode ? undefined : this.sessions.getSessionId(message.channelId),
       );
-      if (channelConfig.skill === "") {
+      if (!isSkillMode) {
         session.onSessionChange = (id) => this.sessions.setSessionId(message.channelId, id);
       }
 
@@ -163,6 +185,17 @@ export class ChannelQueue {
    * Called on bot startup to process messages that were posted while bot was offline.
    */
   async runInit(client: Client): Promise<void> {
+    // ログチャンネルを取得してセット
+    if (this.config.discord.logChannel) {
+      const logCh = await client.channels.fetch(this.config.discord.logChannel);
+      if (logCh instanceof TextChannel) {
+        this.setLogChannel(logCh);
+        console.log(`[Init] Log channel set to #${logCh.name}`);
+      } else {
+        console.warn(`[Init] Log channel ${this.config.discord.logChannel} is not a text channel`);
+      }
+    }
+
     // Filter channels with skill configured
     const skillChannels = this.config.channels.filter((ch) => ch.skill !== "");
     if (skillChannels.length === 0) {
@@ -199,9 +232,13 @@ export class ChannelQueue {
       const session = new ClaudeSession(
         this.config,
         initWorkdir,
-        createDiscordHandler(channel, this.config, (msg) =>
-          this.enqueueItem({ message: msg, channel, channelConfig, type: "message" }),
-        ),
+        createDiscordHandler({
+          channel,
+          isSkillMode: true,
+          logChannel: this.logChannel,
+          config: this.config,
+          enqueue: (msg) => this.enqueueItem({ message: msg, channel, channelConfig, type: "message" }),
+        }),
       );
 
       try {

@@ -21,12 +21,25 @@ function createPendingMessage(): PendingMessage {
   return { textLines: [], mediaFiles: [], reactions: [] };
 }
 
+/**
+ * 溜まったテキスト/メディア/リアクションを Discord に送信する
+ * @param channel 送信先チャンネル（null の場合は console.log のみ）
+ * @param pending 送信するメッセージ
+ */
 async function flushPending(
-  channel: TextChannel,
+  channel: TextChannel | null,
   pending: PendingMessage,
 ): Promise<void> {
   const text = pending.textLines.join("\n");
   if (!text.trim() && pending.mediaFiles.length === 0) return;
+
+  // channel が null の場合は console.log のみ
+  if (!channel) {
+    if (text.trim()) {
+      console.log(`[Discord output (no log channel)] ${text}`);
+    }
+    return;
+  }
 
   const chunks = splitMessage(text, 2000);
   let lastMessage: Message | undefined;
@@ -58,18 +71,40 @@ async function flushPending(
   }
 }
 
+export interface DiscordHandlerOptions {
+  /** チャンネル */
+  channel: TextChannel;
+  /** スキルモードかどうか */
+  isSkillMode?: boolean;
+  /** ログ出力用チャンネル（スキルモード時のテキスト出力先） */
+  logChannel?: TextChannel;
+  /** 設定 */
+  config: Config;
+  /** メッセージをキューに追加するコールバック */
+  enqueue: (message: Message) => void;
+}
+
 /**
  * Create a ClaudeSessionHandlers implementation that outputs to Discord.
  * Buffers text/media/reactions and sends them as Discord messages.
  * Executes !discord commands against the given channel.
  * Returns history text for !discord history to feed back to ClaudeSession.
+ *
+ * If isSkillMode is true:
+ *   - logChannel があれば logChannel に出力
+ *   - logChannel がなければ console.log のみ（Discord には出力しない）
+ * If isSkillMode is false:
+ *   - channel に出力
  */
 export function createDiscordHandler(
-  channel: TextChannel,
-  config: Config,
-  enqueue: (message: Message) => void,
+  options: DiscordHandlerOptions,
 ): ClaudeSessionHandlers {
+  const { channel, isSkillMode, logChannel, config, enqueue } = options;
   const cmdCtx = { channel, allowedUserId: config.discord.user };
+  // テキスト出力先:
+  // - スキルモードでない場合は channel
+  // - スキルモードの場合は logChannel があればそちら、なければ null（console.log のみ）
+  const textOutputChannel = isSkillMode ? (logChannel ?? null) : channel;
 
   return {
     async handleLines(lines: ParsedLine[]): Promise<string | undefined> {
@@ -143,7 +178,7 @@ export function createDiscordHandler(
         }
       }
 
-      await flushPending(channel, pending);
+      await flushPending(textOutputChannel, pending);
       return undefined;
     },
   };
