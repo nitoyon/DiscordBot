@@ -33,6 +33,8 @@ async function flushPending(
   const text = pending.textLines.join("\n");
   if (!text.trim() && pending.mediaFiles.length === 0) return;
 
+  console.log(`[flushPending] -> ${channel?.name ?? "null"}: "${text.slice(0, 80).replace(/\n/g, "\\n")}"`);
+
   // channel が null の場合は console.log のみ
   if (!channel) {
     if (text.trim()) {
@@ -128,19 +130,19 @@ export function createDiscordHandler(
             break;
 
           case "discord_reaction":
-            await flushPending(channel, pending);
+            await flushPending(textOutputChannel, pending);
             pending = createPendingMessage();
             await executeReaction(cmdCtx, line.messageId, line.emoji, line.remove);
             break;
 
           case "discord_delete":
-            await flushPending(channel, pending);
+            await flushPending(textOutputChannel, pending);
             pending = createPendingMessage();
             await executeDelete(cmdCtx, line.messageId);
             break;
 
           case "discord_history": {
-            await flushPending(channel, pending);
+            await flushPending(textOutputChannel, pending);
             const historyText = await executeHistory(
               cmdCtx,
               line.count,
@@ -151,7 +153,7 @@ export function createDiscordHandler(
           }
 
           case "discord_exec": {
-            await flushPending(channel, pending);
+            await flushPending(textOutputChannel, pending);
             pending = createPendingMessage();
             const execMessage = await executeExec(cmdCtx, line.messageId);
             if (!execMessage) {
@@ -165,13 +167,13 @@ export function createDiscordHandler(
           }
 
           case "discord_send":
-            await flushPending(channel, pending);
+            await flushPending(textOutputChannel, pending);
             pending = createPendingMessage();
             await executeSend(cmdCtx, line.message);
             break;
 
           case "discord_sendto":
-            await flushPending(channel, pending);
+            await flushPending(textOutputChannel, pending);
             pending = createPendingMessage();
             await executeSendto(cmdCtx, line.channel, line.message);
             break;

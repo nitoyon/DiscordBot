@@ -113,6 +113,12 @@ export class ChannelQueue {
     }
   }
 
+  private makeLogCallback(): ((text: string) => Promise<void>) | undefined {
+    if (!this.logChannel) return undefined;
+    const logChannel = this.logChannel;
+    return (text: string) => logChannel.send(text).then(() => undefined);
+  }
+
   private async processReaction(item: QueuedReaction): Promise<void> {
     const { channel, channelConfig } = item;
 
@@ -173,6 +179,7 @@ export class ChannelQueue {
       if (!isSkillMode) {
         session.onSessionChange = (id) => this.sessions.setSessionId(message.channelId, id);
       }
+      session.onLog = this.makeLogCallback();
 
       await session.run(prompt);
     } finally {
@@ -240,6 +247,7 @@ export class ChannelQueue {
           enqueue: (msg) => this.enqueueItem({ message: msg, channel, channelConfig, type: "message" }),
         }),
       );
+      session.onLog = this.makeLogCallback();
 
       try {
         await session.run(prompt);
