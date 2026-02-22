@@ -1,6 +1,7 @@
 import { type Client, type Message, TextChannel } from "discord.js";
 import type { Config } from "../config.js";
 import type { SessionManager } from "../session-manager.js";
+import type { CronScheduler } from "../cron-scheduler.js";
 import { buildMessagePrompt, buildReactionPrompt } from "../claude/prompt-builder.js";
 import { ClaudeSession } from "../claude/session.js";
 import { createDiscordHandler } from "./stream-handler.js";
@@ -188,6 +189,39 @@ export class ChannelQueue {
   }
 
   /**
+   * 1つのチャンネルに対してスキルを実行する共通処理。
+   */
+  private async runInitForChannel(
+    channelConfig: ChannelConfig,
+    channel: TextChannel,
+    skill: string = "init",
+    workdir: string = process.cwd(),
+  ): Promise<void> {
+    const prompt = buildMessagePrompt({
+      id: "init",
+      skill: skill,
+      content: `${channelConfig.name} <#${channel.id}>`,
+      channelId: channel.id,
+      attachments: [],
+    });
+
+    const session = new ClaudeSession(
+      this.config,
+      workdir,
+      createDiscordHandler({
+        channel,
+        isSkillMode: true,
+        logChannel: this.logChannel,
+        config: this.config,
+        enqueue: (msg) => this.enqueueItem({ message: msg, channel, channelConfig, type: "message" }),
+      }),
+    );
+    session.onLog = this.makeLogCallback();
+
+    await session.run(prompt);
+  }
+
+  /**
    * Run init skill for all channels with skill configured.
    * Called on bot startup to process messages that were posted while bot was offline.
    */
@@ -212,9 +246,6 @@ export class ChannelQueue {
 
     console.log(`[Init] Running init for ${skillChannels.length} channel(s)`);
 
-    // This project's workdir (where init skill is located)
-    const initWorkdir = process.cwd();
-
     for (const channelConfig of skillChannels) {
       // Find the channel by name
       const channel = client.channels.cache.find(
@@ -228,29 +259,8 @@ export class ChannelQueue {
 
       console.log(`[Init] Running init for #${channelConfig.name} (${channel.id})`);
 
-      const prompt = buildMessagePrompt({
-        id: "init",
-        skill: "init",
-        content: `${channelConfig.name} <#${channel.id}>`,
-        channelId: channel.id,
-        attachments: [],
-      });
-
-      const session = new ClaudeSession(
-        this.config,
-        initWorkdir,
-        createDiscordHandler({
-          channel,
-          isSkillMode: true,
-          logChannel: this.logChannel,
-          config: this.config,
-          enqueue: (msg) => this.enqueueItem({ message: msg, channel, channelConfig, type: "message" }),
-        }),
-      );
-      session.onLog = this.makeLogCallback();
-
       try {
-        await session.run(prompt);
+        await this.runInitForChannel(channelConfig, channel);
         console.log(`[Init] Completed init for #${channelConfig.name}`);
       } catch (error) {
         console.error(`[Init] Error running init for #${channelConfig.name}:`, error);
@@ -258,5 +268,40 @@ export class ChannelQueue {
     }
 
     console.log("[Init] Init completed for all channels");
+  }
+
+  /**
+   * cron 設定があるチャンネルについて、実行すべきものを実行する。
+   * 起動時（オフライン中に時刻を過ぎた場合の補完）と定期チェックの両方で呼ばれる。
+   */
+  async checkAndRunCron(client: Client, cronScheduler: CronScheduler): Promise<void> {
+    const cronChannels = this.config.channels.filter(
+      (ch) => ch.skill !== "" && ch.cron && ch.cron.length > 0,
+    );
+    if (cronChannels.length === 0) return;
+
+    for (const channelConfig of cronChannels) {
+      if (!cronScheduler.shouldRun(channelConfig.name, channelConfig.cron!)) continue;
+
+      const channel = client.channels.cache.find(
+        (ch) => ch instanceof TextChannel && ch.name === channelConfig.name,
+      ) as TextChannel | undefined;
+
+      if (!channel) {
+        console.log(`[Cron] Channel "${channelConfig.name}" not found, skipping`);
+        continue;
+      }
+
+      console.log(`[Cron] Running /${channelConfig.skill} for #${channelConfig.name}`);
+      // 実行前にマーク（二重実行防止）
+      cronScheduler.markRan(channelConfig.name);
+
+      try {
+        await this.runInitForChannel(channelConfig, channel, channelConfig.skill, channelConfig.workdir);
+        console.log(`[Cron] Completed for #${channelConfig.name}`);
+      } catch (error) {
+        console.error(`[Cron] Error for #${channelConfig.name}:`, error);
+      }
+    }
   }
 }

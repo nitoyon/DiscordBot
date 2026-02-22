@@ -18,7 +18,7 @@
    discord:
      token: <Your Token Here>
      user: "<Your User ID Here>"
-   
+
    channels:
      - name: エナジーメモ
        skill: daily-strength
@@ -32,6 +32,22 @@
    ```bash
    npm start
    ```
+
+## cron（定時実行）
+
+チャンネルに `cron` を設定すると、毎日その時刻に自動実行する。
+
+```yaml
+channels:
+  - name: reddit
+    skill: reddit-summary
+    cron:
+      - "10:00"
+      - "22:00"
+```
+
+- 最終実行時刻は `.cron-state.json` に記録される
+- Bot がオフラインで時刻を過ぎた場合、起動時に補完実行する
 
 ## 開発
 

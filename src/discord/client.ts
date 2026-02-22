@@ -2,6 +2,7 @@ import { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder,
 import type { Config } from "../config.js";
 import type { SessionManager } from "../session-manager.js";
 import { ChannelQueue } from "./channel-queue.js";
+import { CronScheduler } from "../cron-scheduler.js";
 
 export function createDiscordClient(
   config: Config,
@@ -18,6 +19,7 @@ export function createDiscordClient(
   });
 
   const channelQueue = new ChannelQueue(config, sessions);
+  const cronScheduler = new CronScheduler();
 
   client.on("clientReady", async () => {
     console.log(`Logged in as ${client.user?.tag}`);
@@ -39,6 +41,16 @@ export function createDiscordClient(
 
     // Run init skill for all channels with skill configured
     await channelQueue.runInit(client);
+
+    // 起動時クロンチェック（オフライン中に時刻を過ぎた場合の補完実行）
+    await channelQueue.checkAndRunCron(client, cronScheduler);
+
+    // 毎分クロンチェック
+    setInterval(() => {
+      channelQueue.checkAndRunCron(client, cronScheduler).catch((err) => {
+        console.error("[Cron] Error in periodic check:", err);
+      });
+    }, 60 * 1000);
   });
 
   client.on("interactionCreate", async (interaction) => {

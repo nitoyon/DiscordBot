@@ -5,7 +5,7 @@ import { parse } from "yaml";
 export interface Config {
   discord: { token: string; user: string; logChannel?: string };
   claude: { model: string };
-  channels: { name: string; skill: string; workdir: string }[];
+  channels: { name: string; skill: string; workdir: string; cron?: string[] }[];
 }
 
 export function loadConfig(path = ".env.yaml"): Config {
@@ -23,6 +23,16 @@ export function loadConfig(path = ".env.yaml"): Config {
       throw new Error("Each channel must have name and skill");
     }
     ch.workdir = ch.workdir ? resolve(ch.workdir) : process.cwd();
+    if (ch.cron !== undefined) {
+      if (!Array.isArray(ch.cron)) {
+        throw new Error(`Channel "${ch.name}": cron must be an array`);
+      }
+      for (const t of ch.cron) {
+        if (!/^\d{2}:\d{2}$/.test(t)) {
+          throw new Error(`Channel "${ch.name}": invalid cron time "${t}", must be HH:MM`);
+        }
+      }
+    }
   }
 
   return data as Config;
