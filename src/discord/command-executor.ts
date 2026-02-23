@@ -1,4 +1,4 @@
-import { Message, TextChannel } from "discord.js";
+import { Message, MessageFlags, TextChannel } from "discord.js";
 
 export interface CommandContext {
   channel: TextChannel;
@@ -60,7 +60,7 @@ export async function executeSend(
   message: string,
 ): Promise<void> {
   try {
-    await ctx.channel.send(message);
+    await ctx.channel.send({ content: message, flags: MessageFlags.SuppressEmbeds });
   } catch (err) {
     console.error(`[!discord send] Error:`, err);
   }
@@ -99,7 +99,7 @@ export async function executeSendto(
       return;
     }
 
-    await targetChannel.send(message);
+    await targetChannel.send({ content: message, flags: MessageFlags.SuppressEmbeds });
   } catch (err) {
     console.error(`[!discord sendto] Error:`, err);
   }

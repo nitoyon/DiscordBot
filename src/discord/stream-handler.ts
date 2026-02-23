@@ -1,3 +1,4 @@
+import { MessageFlags } from "discord.js";
 import type { Message, TextChannel } from "discord.js";
 import type { ParsedLine } from "../claude/response-line-parser.js";
 import type { ClaudeSessionHandlers } from "../claude/session.js";
@@ -52,9 +53,13 @@ async function flushPending(
       lastMessage = await channel.send({
         content: content || undefined,
         files: pending.mediaFiles,
+        flags: MessageFlags.SuppressEmbeds,
       });
     } else {
-      lastMessage = await channel.send(content);
+      lastMessage = await channel.send({
+        content,
+        flags: MessageFlags.SuppressEmbeds,
+      });
     }
   }
 
