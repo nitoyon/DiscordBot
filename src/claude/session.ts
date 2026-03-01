@@ -85,6 +85,7 @@ export class ClaudeSession {
                   : JSON.stringify(block.content);
               const truncated =
                 output.length > 1800 ? output.slice(0, 1800) + "\n...(省略)" : output;
+              console.log(`**OUT**:\n${truncated}`);
               await this.onLog(`\`\`\`\n${truncated}\n\`\`\``);
             }
           }
