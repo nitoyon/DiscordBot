@@ -16,7 +16,6 @@
 4. `.env.yaml` ファイルを作成（`.env.yaml.example` を参考）:
    ```env
    discord:
-     token: <Your Token Here>
      user: "<Your User ID Here>"
 
    channels:

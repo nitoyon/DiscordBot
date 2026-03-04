@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npm tsc:*)",
+      "Bash(npm run typecheck:*)",
+      "Bash(npm test:*)",
+      "Bash(npm run lint:*)",
+      "Read(./**)",
+      "Edit(./**)",
+      "Bash(git grep:*)"
+    ],
+    "deny": [
+      "Read(.env)",
+      "Read(.env.keys)",
+      "Read(.env.yaml)"
+    ]
+  }
+}

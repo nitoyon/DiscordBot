@@ -18,6 +18,9 @@ export function loadConfig(path = ".env.yaml"): Config {
   if (!Array.isArray(data?.channels) || data.channels.length === 0) {
     throw new Error("channels must be a non-empty array");
   }
+  if (process.env?.DISCORD) {
+    data.discord.token = process.env.DISCORD;
+  }
   for (const ch of data.channels) {
     if (!ch.name || typeof ch.skill !== "string") {
       throw new Error("Each channel must have name and skill");

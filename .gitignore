@@ -6,6 +6,8 @@ dist/
 
 # Config
 config.yaml
+.env
+.env.keys
 .env.yaml
 .sessions.json
 
