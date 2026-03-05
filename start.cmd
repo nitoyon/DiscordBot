@@ -1,2 +1,2 @@
 cd %~dp0
-npm run start
+npm run dotenvstart
