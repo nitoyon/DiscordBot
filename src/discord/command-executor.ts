@@ -147,6 +147,7 @@ export async function executeHistory(
     const allMessages: {
       id: string;
       author: string;
+      displayName: string;
       isBot: boolean;
       content: string;
       timestamp: Date;
@@ -175,6 +176,7 @@ export async function executeHistory(
         allMessages.push({
           id: msg.id,
           author: msg.author.username,
+          displayName: msg.author.displayName,
           isBot: msg.author.id === botId,
           content: msg.content,
           timestamp: msg.createdAt,
@@ -196,7 +198,7 @@ export async function executeHistory(
       const reactionInfo =
         m.reactions.length > 0 ? ` [reactions: ${m.reactions.join("")}]` : "";
       const botTag = m.isBot ? " [BOT]" : "";
-      return `[${ts}] ${m.author}${botTag} (${m.id}): ${m.content}${attachmentInfo}${reactionInfo}`;
+      return `[${ts}] ${m.displayName} (${m.author})${botTag} (${m.id}): ${m.content}${attachmentInfo}${reactionInfo}`;
     });
 
     return [
