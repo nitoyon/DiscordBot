@@ -13,13 +13,21 @@ Discord 上でユーザーがメッセージを入力したとき、文字列、
 ```
 ユーザーの入力本文
 id: 1469254290685165578
+created: 2026-02-06T08:52:00.324000+00:00
+username: nitoyon2
+displayname: nitoyon
 channel: 1464624036071080082
 attachments: .tmp/xxxx .tmp/yyyy
 reactions:
 ```
 
-ユーザーが添付したファイルは `attachments` にパスが渡されます。
-処理の完了後には、`.tmp` のファイルは消える可能性があります。
+- id: メッセージID
+- created: メッセージ作成時刻
+- username: ユーザー名
+- displayname: ユーザーの表示名
+- channel: チャンネルID
+- attachments: ユーザーが添付したファイル。処理の完了後には削除されます。
+- reactions: メッセージについているリアクション
 
 ## 出力
 

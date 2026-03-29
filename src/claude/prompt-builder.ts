@@ -7,19 +7,30 @@ export function buildMessagePrompt(params: {
   content: string;
   channelId: string;
   attachments?: string[];
+  username?: string;
+  userid?: string;
+  displayname?: string;
+  created?: string;
 }): string {
   const attachmentsValue = params.attachments?.length
     ? ` ${params.attachments.join(" ")}`
     : "";
-  return [
+  const lines = [
     params.skill === "" ?
       `content: ${params.content}` :
       `/${params.skill} ${params.content}`,
     `id: ${params.id}`,
+  ];
+  if (params.username) lines.push(`username: ${params.username}`);
+  if (params.userid) lines.push(`userid: ${params.userid}`);
+  if (params.displayname) lines.push(`displayname: ${params.displayname}`);
+  if (params.created) lines.push(`created: ${params.created}`);
+  lines.push(
     `channel: ${params.channelId}`,
     `attachments:${attachmentsValue}`,
     `reactions:`,
-  ].join("\n");
+  );
+  return lines.join("\n");
 }
 
 export function buildReactionPrompt(params: {

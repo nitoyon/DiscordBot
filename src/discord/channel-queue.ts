@@ -163,6 +163,10 @@ export class ChannelQueue {
         content: message.content,
         channelId: message.channelId,
         attachments: attachmentPaths,
+        username: message.author.username,
+        userid: message.author.id,
+        displayname: message.author.displayName,
+        created: message.createdAt.toISOString(),
       });
 
       const session = new ClaudeSession(
