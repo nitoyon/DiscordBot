@@ -9,6 +9,40 @@ import { downloadAttachments, cleanupFiles } from "./attachment-downloader.js";
 
 interface ChannelConfig { name: string; skill: string; workdir: string }
 
+/**
+ * スキル実行と exec 処理を順番に実行するためのタスクキュー。
+ * /init スキルはデッドロック防止のため除外する。
+ */
+class SkillTaskQueue {
+  private _running = false;
+  private _queue: Array<() => Promise<void>> = [];
+
+  run(task: () => Promise<void>): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      this._queue.push(async () => {
+        try {
+          await task();
+          resolve();
+        } catch (err) {
+          reject(err);
+        }
+      });
+      if (!this._running) {
+        this._processNext();
+      }
+    });
+  }
+
+  private _processNext(): void {
+    if (this._queue.length === 0) {
+      this._running = false;
+      return;
+    }
+    this._running = true;
+    this._queue.shift()!().finally(() => this._processNext());
+  }
+}
+
 export interface QueuedTextMessage {
   type: "message";
   message: Message;
@@ -33,6 +67,7 @@ export class ChannelQueue {
   private config: Config;
   private sessions: SessionManager;
   private logChannel: TextChannel | undefined;
+  private skillQueue = new SkillTaskQueue();
 
   constructor(config: Config, sessions: SessionManager) {
     this.config = config;
@@ -186,7 +221,11 @@ export class ChannelQueue {
       }
       session.onLog = this.makeLogCallback();
 
-      await session.run(prompt);
+      if (isSkillMode) {
+        await this.skillQueue.run(() => session.run(prompt));
+      } else {
+        await session.run(prompt);
+      }
     } finally {
       await cleanupFiles(attachmentPaths);
     }
@@ -222,7 +261,11 @@ export class ChannelQueue {
     );
     session.onLog = this.makeLogCallback();
 
-    await session.run(prompt);
+    if (skill !== "init") {
+      await this.skillQueue.run(() => session.run(prompt));
+    } else {
+      await session.run(prompt);
+    }
   }
 
   /**
