@@ -165,8 +165,8 @@ export async function executeHistory(
       if (msgs.size === 0) break;
 
       for (const msg of msgs.values()) {
-        // 対象ユーザーまたはボットのメッセージのみを含める
-        if (ctx.allowedUserId && msg.author.id !== ctx.allowedUserId && msg.author.id !== botId) {
+        // 対象ユーザーのメッセージのみを含める
+        if (ctx.allowedUserId && msg.author.id !== ctx.allowedUserId) {
           continue;
         }
 

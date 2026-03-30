@@ -10,7 +10,10 @@ export function startClaudeQuery(
 ): Query {
   const isNewSession = !sessionId;
 
-  console.log("[Claude] querry:", prompt);
+  // discordログは長いのでログ出力しない
+  if (!prompt.startsWith("--- history of #")) {
+    console.log("[Claude] querry:", prompt);
+  }
   console.log("[Claude] session:",
     isNewSession ? "NEW" : sessionId);
 
