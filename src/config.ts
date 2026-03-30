@@ -5,7 +5,7 @@ import { parse } from "yaml";
 export interface Config {
   discord: { token: string; user: string; logChannel?: string };
   claude: { model: string };
-  channels: { name: string; skill: string; workdir: string; cron?: string[] }[];
+  channels: { name: string; skill: string; workdir: string; cron?: string[]; allowAllUsers?: boolean }[];
 }
 
 export function loadConfig(path = ".env.yaml"): Config {

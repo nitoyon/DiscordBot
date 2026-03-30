@@ -7,7 +7,7 @@ import { ClaudeSession } from "../claude/session.js";
 import { createDiscordHandler } from "./stream-handler.js";
 import { downloadAttachments, cleanupFiles } from "./attachment-downloader.js";
 
-interface ChannelConfig { name: string; skill: string; workdir: string }
+interface ChannelConfig { name: string; skill: string; workdir: string; allowAllUsers?: boolean }
 
 /**
  * スキル実行と exec 処理を順番に実行するためのタスクキュー。
@@ -83,7 +83,6 @@ export class ChannelQueue {
 
   enqueueMessage(message: Message): void {
     if (message.author.bot) return;
-    if (message.author.id !== this.config.discord.user.toString()) return;
 
     if (!(message.channel instanceof TextChannel)) return;
     const channel = message.channel;
@@ -92,6 +91,10 @@ export class ChannelQueue {
       (ch) => ch.name === channel.name,
     );
     if (!channelConfig) return;
+
+    if (!channelConfig.allowAllUsers) {
+      if (message.author.id !== this.config.discord.user.toString()) return;
+    }
 
     console.log(
       `[Discord] #${channel.name} ${message.author.username}: ${message.content}`,
@@ -213,6 +216,7 @@ export class ChannelQueue {
           logChannel: this.logChannel,
           config: this.config,
           enqueue: (msg) => this.enqueueItem({ message: msg, channel, channelConfig, type: "message" }),
+          allowAllUsers: channelConfig.allowAllUsers,
         }),
         isSkillMode ? undefined : this.sessions.getSessionId(message.channelId),
       );

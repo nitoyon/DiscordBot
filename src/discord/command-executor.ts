@@ -165,9 +165,12 @@ export async function executeHistory(
       if (msgs.size === 0) break;
 
       for (const msg of msgs.values()) {
-        // 対象ユーザーのメッセージのみを含める
-        if (ctx.allowedUserId && msg.author.id !== ctx.allowedUserId) {
-          continue;
+        if (ctx.allowedUserId) {
+          // 特定ユーザーのメッセージのみを含める
+          if (msg.author.id !== ctx.allowedUserId) continue;
+        } else {
+          // allowAllUsers モード: bot を除く全ユーザーを含める
+          if (msg.author.bot) continue;
         }
 
         // リアクションの絵文字を取得

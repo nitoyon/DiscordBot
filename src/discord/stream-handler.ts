@@ -89,6 +89,8 @@ export interface DiscordHandlerOptions {
   config: Config;
   /** メッセージをキューに追加するコールバック */
   enqueue: (message: Message) => void;
+  /** 全ユーザーのメッセージを history 対象にするか */
+  allowAllUsers?: boolean;
 }
 
 /**
@@ -106,8 +108,8 @@ export interface DiscordHandlerOptions {
 export function createDiscordHandler(
   options: DiscordHandlerOptions,
 ): ClaudeSessionHandlers {
-  const { channel, isSkillMode, logChannel, config, enqueue } = options;
-  const cmdCtx = { channel, allowedUserId: config.discord.user };
+  const { channel, isSkillMode, logChannel, config, enqueue, allowAllUsers } = options;
+  const cmdCtx = { channel, allowedUserId: allowAllUsers ? undefined : config.discord.user };
   // テキスト出力先:
   // - スキルモードでない場合は channel
   // - スキルモードの場合は logChannel があればそちら、なければ null（console.log のみ）
