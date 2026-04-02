@@ -157,14 +157,15 @@ export async function executeHistory(
     let remaining = count;
 
     while (remaining > 0) {
-      const batch = Math.min(remaining, 30);
       const msgs = await targetChannel.messages.fetch({
-        limit: batch,
+        limit: 100,
         ...(beforeId ? { before: beforeId } : {}),
       });
       if (msgs.size === 0) break;
 
       for (const msg of msgs.values()) {
+        if (remaining <= 0) break;
+
         if (ctx.allowedUserId) {
           // 特定ユーザーのメッセージのみを含める
           if (msg.author.id !== ctx.allowedUserId) continue;
@@ -186,9 +187,10 @@ export async function executeHistory(
           attachments: msg.attachments.map((a) => a.url),
           reactions,
         });
+        remaining--;
       }
       beforeId = msgs.lastKey();
-      remaining -= msgs.size;
+      if (msgs.size < 100) break; // これ以上メッセージがない
     }
 
     const channelName = targetChannel.name;

@@ -263,6 +263,7 @@ export class ChannelQueue {
         isSkillMode: true,
         logChannel: this.logChannel,
         config: this.config,
+        allowAllUsers: channelConfig.allowAllUsers,
         enqueue: (msg) => this.enqueueItem({ message: msg, channel, channelConfig, type: "message" }),
       }),
     );
