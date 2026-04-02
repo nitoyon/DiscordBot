@@ -16,6 +16,7 @@ id: 1469254290685165578
 created: 2026-02-06T08:52:00.324000+00:00
 username: nitoyon2
 displayname: nitoyon
+channelname: メモ
 channel: 1464624036071080082
 attachments: .tmp/xxxx .tmp/yyyy
 reactions:
@@ -25,6 +26,7 @@ reactions:
 - created: メッセージ作成時刻
 - username: ユーザー名
 - displayname: ユーザーの表示名
+- channelname: チャンネル表示名
 - channel: チャンネルID
 - attachments: ユーザーが添付したファイル。処理の完了後には削除されます。
 - reactions: メッセージについているリアクション

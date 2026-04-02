@@ -6,6 +6,7 @@ export function buildMessagePrompt(params: {
   skill: string;
   content: string;
   channelId: string;
+  channelName?: string;
   attachments?: string[];
   username?: string;
   userid?: string;
@@ -25,6 +26,7 @@ export function buildMessagePrompt(params: {
   if (params.userid) lines.push(`userid: ${params.userid}`);
   if (params.displayname) lines.push(`displayname: ${params.displayname}`);
   if (params.created) lines.push(`created: ${params.created}`);
+  if (params.channelName) lines.push(`channelname: ${params.channelName}`);
   lines.push(
     `channel: ${params.channelId}`,
     `attachments:${attachmentsValue}`,
@@ -37,13 +39,16 @@ export function buildReactionPrompt(params: {
   emoji: string;
   targetMessageId: string;
   channelId: string;
+  channelName?: string;
 }): string {
-  return [
+  const lines = [
     `[reaction added]`,
     `target_message_id: ${params.targetMessageId}`,
     `emoji: ${params.emoji}`,
     `channel: ${params.channelId}`,
-  ].join("\n");
+  ];
+  if (params.channelName) lines.push(`channelname: ${params.channelName}`);
+  return lines.join("\n");
 }
 
 let cachedSystemPrompt: string | undefined;

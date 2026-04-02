@@ -165,6 +165,7 @@ export class ChannelQueue {
       emoji: item.emoji,
       targetMessageId: item.targetMessageId,
       channelId: item.channelId,
+      channelName: channel.name,
     });
 
     const session = new ClaudeSession(
@@ -200,6 +201,7 @@ export class ChannelQueue {
         skill: channelConfig.skill,
         content: message.content,
         channelId: message.channelId,
+        channelName: channel.name,
         attachments: attachmentPaths,
         username: message.author.username,
         userid: message.author.id,
@@ -249,6 +251,7 @@ export class ChannelQueue {
       skill: skill,
       content: `${channelConfig.name} <#${channel.id}>`,
       channelId: channel.id,
+      channelName: channel.name,
       attachments: [],
     });
 
