@@ -6,6 +6,8 @@ import { buildMessagePrompt, buildReactionPrompt } from "../claude/prompt-builde
 import { ClaudeSession } from "../claude/session.js";
 import { createDiscordHandler } from "./stream-handler.js";
 import { downloadAttachments, cleanupFiles } from "./attachment-downloader.js";
+import { processUnhandledMessages } from "../init-processor.js";
+import { executeHistoryRaw } from "./command-executor.js";
 
 interface ChannelConfig { name: string; skill: string; workdir: string; allowAllUsers?: boolean }
 
@@ -312,13 +314,21 @@ export class ChannelQueue {
         continue;
       }
 
-      console.log(`[Init] Running init for #${channelConfig.name} (${channel.id})`);
-
       try {
-        await this.runInitForChannel(channelConfig, channel);
-        console.log(`[Init] Completed init for #${channelConfig.name}`);
+        const cmdCtx = { channel, allowedUserId: channelConfig.allowAllUsers ? undefined : this.config.discord.user };
+
+        await processUnhandledMessages({
+          channelName: channelConfig.name,
+          fetchHistory: async (count, offset) => {
+            return await executeHistoryRaw(cmdCtx, count, null, offset);
+          },
+          enqueueMessage: (message) => {
+            //console.log(`enqueue: ${message.author.displayName} : ${message.content}`);
+            this.enqueueItem({ message, channel, channelConfig, type: "message" });
+          },
+        });
       } catch (error) {
-        console.error(`[Init] Error running init for #${channelConfig.name}:`, error);
+        console.error(`[Init] Error for #${channelConfig.name}:`, error);
       }
     }
 
