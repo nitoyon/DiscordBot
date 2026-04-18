@@ -4,12 +4,19 @@ import type { SessionManager } from "../session-manager.js";
 import type { CronScheduler } from "../cron-scheduler.js";
 import { buildMessagePrompt, buildReactionPrompt } from "../claude/prompt-builder.js";
 import { ClaudeSession } from "../claude/session.js";
+import { ScriptSession } from "../claude/script-session.js";
 import { createDiscordHandler } from "./stream-handler.js";
 import { downloadAttachments, cleanupFiles } from "./attachment-downloader.js";
 import { processUnhandledMessages } from "../init-processor.js";
 import { executeHistoryRaw } from "./command-executor.js";
 
-interface ChannelConfig { name: string; skill: string; workdir: string; allowAllUsers?: boolean }
+interface ChannelConfig {
+  name: string;
+  skill: string;
+  script?: string;
+  workdir: string;
+  allowAllUsers?: boolean;
+}
 
 /**
  * スキル実行と exec 処理を順番に実行するためのタスクキュー。
@@ -187,13 +194,15 @@ export class ChannelQueue {
 
   private async processMessage(item: QueuedTextMessage): Promise<void> {
     const { message, channel, channelConfig } = item;
-    const isSkillMode = channelConfig.skill !== "";
+    const isScriptMode = channelConfig.script !== undefined;
+    const isSkillMode = isScriptMode || channelConfig.skill !== "";
 
-    // スキルモード時はログチャンネルにスキル実行開始を通知
-    if (isSkillMode && this.logChannel) {
+    // スキル/スクリプトモード時はログチャンネルに実行開始を通知
+    if ((isSkillMode || isScriptMode) && this.logChannel) {
       const guildId = channel.guild.id;
       const messageUrl = `https://discord.com/channels/${guildId}/${channel.id}/${message.id}`;
-      await this.logChannel.send(`${messageUrl} に対してスキル \`/${channelConfig.skill}\` を実行...`);
+      const label = isScriptMode ? `スクリプト` : `スキル \`/${channelConfig.skill}\``;
+      await this.logChannel.send(`${messageUrl} に対して${label}を実行...`);
     }
 
     const attachmentPaths = await downloadAttachments(message.attachments, channelConfig.workdir);
@@ -211,28 +220,35 @@ export class ChannelQueue {
         created: message.createdAt.toISOString(),
       });
 
-      const session = new ClaudeSession(
-        this.config,
-        channelConfig.workdir,
-        createDiscordHandler({
-          channel,
-          isSkillMode,
-          logChannel: this.logChannel,
-          config: this.config,
-          enqueue: (msg) => this.enqueueItem({ message: msg, channel, channelConfig, type: "message" }),
-          allowAllUsers: channelConfig.allowAllUsers,
-        }),
-        isSkillMode ? undefined : this.sessions.getSessionId(message.channelId),
-      );
-      if (!isSkillMode) {
-        session.onSessionChange = (id) => this.sessions.setSessionId(message.channelId, id);
-      }
-      session.onLog = this.makeLogCallback();
+      const discordHandler = createDiscordHandler({
+        channel,
+        isSkillMode,
+        logChannel: this.logChannel,
+        config: this.config,
+        enqueue: (msg) => this.enqueueItem({ message: msg, channel, channelConfig, type: "message" }),
+        allowAllUsers: channelConfig.allowAllUsers,
+      });
 
-      if (isSkillMode) {
+      if (isScriptMode) {
+        const session = new ScriptSession(channelConfig.script!, channelConfig.workdir, discordHandler);
         await this.skillQueue.run(() => session.run(prompt));
       } else {
-        await session.run(prompt);
+        const session = new ClaudeSession(
+          this.config,
+          channelConfig.workdir,
+          discordHandler,
+          isSkillMode ? undefined : this.sessions.getSessionId(message.channelId),
+        );
+        if (!isSkillMode) {
+          session.onSessionChange = (id) => this.sessions.setSessionId(message.channelId, id);
+        }
+        session.onLog = this.makeLogCallback();
+
+        if (isSkillMode) {
+          await this.skillQueue.run(() => session.run(prompt));
+        } else {
+          await session.run(prompt);
+        }
       }
     } finally {
       await cleanupFiles(attachmentPaths);
@@ -294,8 +310,8 @@ export class ChannelQueue {
       }
     }
 
-    // Filter channels with skill configured
-    const skillChannels = this.config.channels.filter((ch) => ch.skill !== "");
+    // Filter channels with skill or script configured
+    const skillChannels = this.config.channels.filter((ch) => ch.skill !== "" || ch.script !== undefined);
     if (skillChannels.length === 0) {
       console.log("[Init] No channels with skill configured, skipping init");
       return;
@@ -341,7 +357,7 @@ export class ChannelQueue {
    */
   async checkAndRunCron(client: Client, cronScheduler: CronScheduler): Promise<void> {
     const cronChannels = this.config.channels.filter(
-      (ch) => ch.skill !== "" && ch.cron && ch.cron.length > 0,
+      (ch) => (ch.skill !== "" || ch.script !== undefined) && ch.cron && ch.cron.length > 0,
     );
     if (cronChannels.length === 0) return;
 

@@ -5,7 +5,7 @@ import { parse } from "yaml";
 export interface Config {
   discord: { token: string; user: string; logChannel?: string };
   claude: { model: string };
-  channels: { name: string; skill: string; workdir: string; cron?: string[]; allowAllUsers?: boolean }[];
+  channels: { name: string; skill: string; script?: string; workdir: string; cron?: string[]; allowAllUsers?: boolean }[];
 }
 
 export function loadConfig(path = ".env.yaml"): Config {
@@ -22,9 +22,16 @@ export function loadConfig(path = ".env.yaml"): Config {
     data.discord.token = process.env.DISCORD;
   }
   for (const ch of data.channels) {
-    if (!ch.name || typeof ch.skill !== "string") {
-      throw new Error("Each channel must have name and skill");
+    if (!ch.name) {
+      throw new Error("Each channel must have name");
     }
+    if (ch.script !== undefined && typeof ch.script !== "string") {
+      throw new Error(`Channel "${ch.name}": script must be a string`);
+    }
+    if (ch.script === undefined && typeof ch.skill !== "string") {
+      throw new Error(`Channel "${ch.name}": must have either skill or script`);
+    }
+    if (ch.skill === undefined) ch.skill = "";
     ch.workdir = ch.workdir ? resolve(ch.workdir) : process.cwd();
     if (ch.cron !== undefined) {
       if (!Array.isArray(ch.cron)) {
