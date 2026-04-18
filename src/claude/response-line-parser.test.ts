@@ -60,6 +60,18 @@ describe("HeredocState", () => {
       message: "content",
     });
   });
+
+  it("handles reply command", () => {
+    const state = new HeredocState();
+    state.start("EOF", "reply");
+
+    state.addLine("reply message");
+    const result = state.end();
+    expect(result).toEqual({
+      type: "discord_reply",
+      message: "reply message",
+    });
+  });
 });
 
 describe("parseResponseText", () => {
@@ -77,6 +89,24 @@ describe("parseResponseText", () => {
 
       expect(result).toEqual([
         { type: "discord_send", message: "メッセージ: 処理中..." },
+      ]);
+    });
+  });
+
+  describe("single line !discord reply", () => {
+    it("parses simple reply message", () => {
+      const result = parseResponseText("!discord reply Hello there!");
+
+      expect(result).toEqual([
+        { type: "discord_reply", message: "Hello there!" },
+      ]);
+    });
+
+    it("parses reply message with special characters", () => {
+      const result = parseResponseText("!discord reply メッセージ: 確認しました");
+
+      expect(result).toEqual([
+        { type: "discord_reply", message: "メッセージ: 確認しました" },
       ]);
     });
   });
@@ -128,6 +158,21 @@ MYEND`;
 
       expect(result).toEqual([
         { type: "discord_send", message: "content" },
+      ]);
+    });
+  });
+
+  describe("heredoc !discord reply", () => {
+    it("parses heredoc reply message", () => {
+      const text = `!discord reply <<EOF
+multi
+line
+reply
+EOF`;
+      const result = parseResponseText(text);
+
+      expect(result).toEqual([
+        { type: "discord_reply", message: "multi\nline\nreply" },
       ]);
     });
   });

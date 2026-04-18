@@ -3,6 +3,7 @@ import { Message, MessageFlags, TextChannel } from "discord.js";
 export interface CommandContext {
   channel: TextChannel;
   allowedUserId?: string;
+  replyToMessageId?: string;
 }
 
 export async function executeReaction(
@@ -63,6 +64,27 @@ export async function executeSend(
     await ctx.channel.send({ content: message, flags: MessageFlags.SuppressEmbeds });
   } catch (err) {
     console.error(`[!discord send] Error:`, err);
+  }
+}
+
+export async function executeReply(
+  ctx: CommandContext,
+  message: string,
+): Promise<void> {
+  try {
+    if (!ctx.replyToMessageId) {
+      console.error(`[!discord reply] Error: replyToMessageId is not set in CommandContext`);
+      return;
+    }
+
+    const targetMessage = await ctx.channel.messages.fetch(ctx.replyToMessageId);
+    await targetMessage.reply({
+      content: message,
+      flags: MessageFlags.SuppressEmbeds,
+      allowedMentions: { repliedUser: false }
+    });
+  } catch (err) {
+    console.error(`[!discord reply] Error:`, err);
   }
 }
 

@@ -9,6 +9,7 @@ import {
   executeHistory,
   executeExec,
   executeSend,
+  executeReply,
   executeSendto,
 } from "./command-executor.js";
 
@@ -91,6 +92,8 @@ export interface DiscordHandlerOptions {
   enqueue: (message: Message) => void;
   /** 全ユーザーのメッセージを history 対象にするか */
   allowAllUsers?: boolean;
+  /** リプライ対象のメッセージID */
+  replyToMessageId?: string;
 }
 
 /**
@@ -108,8 +111,12 @@ export interface DiscordHandlerOptions {
 export function createDiscordHandler(
   options: DiscordHandlerOptions,
 ): ClaudeSessionHandlers {
-  const { channel, isSkillMode, logChannel, config, enqueue, allowAllUsers } = options;
-  const cmdCtx = { channel, allowedUserId: allowAllUsers ? undefined : config.discord.user };
+  const { channel, isSkillMode, logChannel, config, enqueue, allowAllUsers, replyToMessageId } = options;
+  const cmdCtx = {
+    channel,
+    allowedUserId: allowAllUsers ? undefined : config.discord.user,
+    replyToMessageId
+  };
   // テキスト出力先:
   // - スキルモードでない場合は channel
   // - スキルモードの場合は logChannel があればそちら、なければ null（console.log のみ）
@@ -177,6 +184,12 @@ export function createDiscordHandler(
             await flushPending(textOutputChannel, pending);
             pending = createPendingMessage();
             await executeSend(cmdCtx, line.message);
+            break;
+
+          case "discord_reply":
+            await flushPending(textOutputChannel, pending);
+            pending = createPendingMessage();
+            await executeReply(cmdCtx, line.message);
             break;
 
           case "discord_sendto":

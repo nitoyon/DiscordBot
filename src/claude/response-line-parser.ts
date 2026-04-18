@@ -17,6 +17,7 @@ export type ParsedLine =
   | { type: "discord_delete"; messageId: string }
   | { type: "discord_exec"; messageId: string }
   | { type: "discord_send"; message: string }
+  | { type: "discord_reply"; message: string }
   | { type: "discord_sendto"; channel: string; message: string }
   | { type: "discord_nop" };
 
@@ -29,6 +30,7 @@ const EXEC_RE = /^!discord\s+exec\s+(\d+)$/;
 const MEDIA_RE = /^media:\s+(.+)$/;
 const REACTIONS_RE = /^reactions:\s+(.+)$/;
 const SEND_RE = /^!discord\s+send\s+(.+)$/;
+const REPLY_RE = /^!discord\s+reply\s+(.+)$/;
 const SENDTO_RE = /^!discord\s+sendto\s+(<#(\d+)>|#(\S+))\s+(.+)$/;
 const HEREDOC_START_RE = /^<<(\w+)$/;
 
@@ -92,14 +94,14 @@ export function parseChannelRef(ref: string): string {
 export class HeredocState {
   private delimiter: string | null = null;
   private lines: string[] = [];
-  private commandType: "send" | "sendto" | null = null;
+  private commandType: "send" | "reply" | "sendto" | null = null;
   private channel: string | undefined = undefined;
 
   isActive(): boolean {
     return this.delimiter !== null;
   }
 
-  start(delimiter: string, commandType: "send" | "sendto", channel?: string): void {
+  start(delimiter: string, commandType: "send" | "reply" | "sendto", channel?: string): void {
     this.delimiter = delimiter;
     this.commandType = commandType;
     this.channel = channel;
@@ -124,6 +126,10 @@ export class HeredocState {
     if (commandType === "sendto" && channel) {
       console.log(`[Discord] !discord sendto #${channel} (heredoc, ${message.split("\n").length} lines)`);
       return { type: "discord_sendto", channel, message };
+    }
+    if (commandType === "reply") {
+      console.log(`[Discord] !discord reply (heredoc, ${message.split("\n").length} lines)`);
+      return { type: "discord_reply", message };
     }
     console.log(`[Discord] !discord send (heredoc, ${message.split("\n").length} lines)`);
     return { type: "discord_send", message };
@@ -186,7 +192,7 @@ function parseLine(line: string, heredocState: HeredocState): ParsedLine | null 
     return { type: "discord_exec", messageId: m[1] };
   }
 
-  // !discord sendto のマッチ（send より先にチェック）
+  // !discord sendto のマッチ（send/reply より先にチェック）
   m = line.match(SENDTO_RE);
   if (m) {
     const channelRef = m[1];
@@ -203,6 +209,23 @@ function parseLine(line: string, heredocState: HeredocState): ParsedLine | null 
 
     console.log(`[Discord] !discord sendto #${channel} ${content}`);
     return { type: "discord_sendto", channel, message: content };
+  }
+
+  // !discord reply のマッチ（send より先にチェック）
+  m = line.match(REPLY_RE);
+  if (m) {
+    const content = m[1];
+
+    // ヒアドキュメント開始チェック
+    const heredocMatch = content.match(HEREDOC_START_RE);
+    if (heredocMatch) {
+      const delimiter = heredocMatch[1];
+      heredocState.start(delimiter, "reply");
+      return null; // ヒアドキュメント開始時は結果を返さない
+    }
+
+    console.log(`[Discord] !discord reply ${content}`);
+    return { type: "discord_reply", message: content };
   }
 
   // !discord send のマッチ

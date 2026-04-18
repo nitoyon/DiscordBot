@@ -227,6 +227,7 @@ export class ChannelQueue {
         config: this.config,
         enqueue: (msg) => this.enqueueItem({ message: msg, channel, channelConfig, type: "message" }),
         allowAllUsers: channelConfig.allowAllUsers,
+        replyToMessageId: message.id,
       });
 
       if (isScriptMode) {
