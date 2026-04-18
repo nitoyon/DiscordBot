@@ -105,12 +105,33 @@ export async function executeSendto(
   }
 }
 
-export async function executeHistory(
+export interface HistoryMessage {
+  id: string;
+  author: string;
+  displayName: string;
+  isBot: boolean;
+  content: string;
+  timestamp: Date;
+  attachments: string[];
+  reactions: string[];
+}
+
+export interface HistoryResult {
+  channelName: string;
+  messages: HistoryMessage[];
+  offset: number;
+}
+
+/**
+ * 履歴を構造化データとして取得する (文字列化なし)
+ * @returns Message[] (新しい順)
+ */
+export async function executeHistoryRaw(
   ctx: CommandContext,
   count: number,
   channelId: string | null,
   offset: number,
-): Promise<string> {
+): Promise<Message[]> {
   try {
     const client = ctx.channel.client;
     let targetChannel: TextChannel;
@@ -118,7 +139,8 @@ export async function executeHistory(
     if (channelId) {
       const fetched = await client.channels.fetch(channelId);
       if (!(fetched instanceof TextChannel)) {
-        return `--- history error: Channel <#${channelId}> is not a text channel ---`;
+        console.error(`[!discord history] Channel <#${channelId}> is not a text channel`);
+        return [];
       }
       targetChannel = fetched;
     } else {
@@ -142,18 +164,8 @@ export async function executeHistory(
       }
     }
 
-    // Fetch requested messages in batches of 30
-    const botId = client.user!.id;
-    const allMessages: {
-      id: string;
-      author: string;
-      displayName: string;
-      isBot: boolean;
-      content: string;
-      timestamp: Date;
-      attachments: string[];
-      reactions: string[];
-    }[] = [];
+    // Fetch requested messages in batches of 100
+    const allMessages: Message[] = [];
     let remaining = count;
 
     while (remaining > 0) {
@@ -174,45 +186,54 @@ export async function executeHistory(
           if (msg.author.bot) continue;
         }
 
-        // リアクションの絵文字を取得
-        const reactions = msg.reactions.cache.map((r) => r.emoji.name ?? r.emoji.toString());
-
-        allMessages.push({
-          id: msg.id,
-          author: msg.author.username,
-          displayName: msg.author.displayName,
-          isBot: msg.author.id === botId,
-          content: msg.content,
-          timestamp: msg.createdAt,
-          attachments: msg.attachments.map((a) => a.url),
-          reactions,
-        });
+        allMessages.push(msg);
         remaining--;
       }
       beforeId = msgs.lastKey();
       if (msgs.size < 100) break; // これ以上メッセージがない
     }
 
-    const channelName = targetChannel.name;
-    const lines = allMessages.map((m) => {
-      const ts = m.timestamp.toISOString();
-      const attachmentInfo =
-        m.attachments.length > 0
-          ? ` [attachments: ${m.attachments.join(", ")}]`
-          : "";
-      const reactionInfo =
-        m.reactions.length > 0 ? ` [reactions: ${m.reactions.join("")}]` : "";
-      const botTag = m.isBot ? " [BOT]" : "";
-      return `[${ts}] ${m.displayName} (${m.author})${botTag} (${m.id}): ${m.content}${attachmentInfo}${reactionInfo}`;
-    });
-
-    return [
-      `--- history of #${channelName} (${allMessages.length} messages, offset ${offset}) ---`,
-      ...lines,
-      `--- end history ---`,
-    ].join("\n");
+    return allMessages;
   } catch (err) {
     console.error(`[!discord history] Error:`, err);
-    return `--- history error: ${err instanceof Error ? err.message : String(err)} ---`;
+    return [];
   }
+}
+
+/**
+ * 履歴を文字列として取得する (Claude 向け)
+ */
+export async function executeHistory(
+  ctx: CommandContext,
+  count: number,
+  channelId: string | null,
+  offset: number,
+): Promise<string> {
+  const messages = await executeHistoryRaw(ctx, count, channelId, offset);
+
+  if (messages.length === 0) {
+    return `--- history error: No messages found ---`;
+  }
+
+  const botId = ctx.channel.client.user!.id;
+  const channelName = ctx.channel.name;
+
+  const lines = messages.map((msg) => {
+    const ts = msg.createdAt.toISOString();
+    const attachmentInfo =
+      msg.attachments.size > 0
+        ? ` [attachments: ${Array.from(msg.attachments.values()).map(a => a.url).join(", ")}]`
+        : "";
+    const reactions = msg.reactions.cache.map((r) => r.emoji.name ?? r.emoji.toString());
+    const reactionInfo =
+      reactions.length > 0 ? ` [reactions: ${reactions.join("")}]` : "";
+    const botTag = msg.author.id === botId ? " [BOT]" : "";
+    return `[${ts}] ${msg.author.displayName} (${msg.author.username})${botTag} (${msg.id}): ${msg.content}${attachmentInfo}${reactionInfo}`;
+  });
+
+  return [
+    `--- history of #${channelName} (${messages.length} messages, offset ${offset}) ---`,
+    ...lines,
+    `--- end history ---`,
+  ].join("\n");
 }
