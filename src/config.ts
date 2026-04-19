@@ -28,7 +28,11 @@ export function loadConfig(path = ".env.yaml"): Config {
     if (ch.script !== undefined && typeof ch.script !== "string") {
       throw new Error(`Channel "${ch.name}": script must be a string`);
     }
-    if (ch.script === undefined && typeof ch.skill !== "string") {
+    if (ch.skill !== undefined && typeof ch.skill !== "string") {
+      throw new Error(`Channel "${ch.name}": skill must be a string`);
+    }
+    // script も skill も未定義の場合はエラー
+    if (ch.script === undefined && ch.skill === undefined) {
       throw new Error(`Channel "${ch.name}": must have either skill or script`);
     }
     if (ch.skill === undefined) ch.skill = "";

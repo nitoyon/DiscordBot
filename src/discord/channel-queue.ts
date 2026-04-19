@@ -194,7 +194,14 @@ export class ChannelQueue {
 
   private async processMessage(item: QueuedTextMessage): Promise<void> {
     const { message, channel, channelConfig } = item;
-    const isScriptMode = channelConfig.script !== undefined;
+    const attachmentPaths = await downloadAttachments(message.attachments, channelConfig.workdir);
+
+    // script と skill の両方が定義されている場合は、添付ファイルの有無で切り替え
+    const hasAttachments = attachmentPaths.length > 0;
+    const shouldUseScript =
+      channelConfig.script !== undefined &&
+      (channelConfig.skill === undefined || channelConfig.skill === "" || hasAttachments);
+    const isScriptMode = shouldUseScript;
     const isSkillMode = isScriptMode || channelConfig.skill !== "";
 
     // スキル/スクリプトモード時はログチャンネルに実行開始を通知
@@ -204,8 +211,6 @@ export class ChannelQueue {
       const label = isScriptMode ? `スクリプト` : `スキル \`/${channelConfig.skill}\``;
       await this.logChannel.send(`${messageUrl} に対して${label}を実行...`);
     }
-
-    const attachmentPaths = await downloadAttachments(message.attachments, channelConfig.workdir);
     try {
       const prompt = buildMessagePrompt({
         id: message.id,
