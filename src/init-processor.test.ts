@@ -37,8 +37,8 @@ describe("determineUnprocessedMessages", () => {
     });
   });
 
-  describe("一番古いメッセージに✅がついている場合", () => {
-    it("✅なしメッセージのみを古い順で返す", () => {
+  describe("✅がついているメッセージがある場合", () => {
+    it("✅がついている最新メッセージより新しいメッセージを古い順で返す", () => {
       // 新しい順: [3=未処理, 2=未処理, 1=処理済み]
       const messages = [
         createMessage("3"),
@@ -51,7 +51,7 @@ describe("determineUnprocessedMessages", () => {
       expect(result.needMoreHistory).toBe(false);
     });
 
-    it("全て処理済みの場合は空リストを返す", () => {
+    it("最新メッセージが✅付きの場合は空リストを返す", () => {
       const messages = [
         createMessage("3", ["✅"]),
         createMessage("2", ["✅"]),
@@ -75,9 +75,24 @@ describe("determineUnprocessedMessages", () => {
       expect(result.unprocessedMessages.map(m => m.id)).toEqual(["2"]);
       expect(result.needMoreHistory).toBe(false);
     });
+
+    it("途中に✅がある場合、最新の✅より新しいメッセージのみを返す", () => {
+      // 新しい順: [5=未処理, 4=未処理, 3=処理済み, 2=処理済み, 1=未処理]
+      const messages = [
+        createMessage("5"),
+        createMessage("4"),
+        createMessage("3", ["✅"]),
+        createMessage("2", ["✅"]),
+        createMessage("1"), // この未処理メッセージは返さない
+      ] as Message[];
+
+      const result = determineUnprocessedMessages(messages, false);
+      expect(result.unprocessedMessages.map(m => m.id)).toEqual(["4", "5"]); // 古い順
+      expect(result.needMoreHistory).toBe(false);
+    });
   });
 
-  describe("一番古いメッセージに✅がついていない場合", () => {
+  describe("✅がついているメッセージがない場合", () => {
     it("hasMore=true の場合、さらに履歴が必要と判断する", () => {
       const messages = [
         createMessage("3"),

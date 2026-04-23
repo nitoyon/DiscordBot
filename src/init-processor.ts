@@ -112,23 +112,24 @@ export function determineUnprocessedMessages(
     return { unprocessedMessages: [], needMoreHistory: false };
   }
 
-  // 新しい順に並んでいるので、末尾(=古い方)から✅があるかチェック
-  const oldestMessage = messages[messages.length - 1];
-  const reactions = Array.from(oldestMessage.reactions.cache.values()).map((r) => r.emoji.name ?? r.emoji.toString());
-  const hasCheckmark = reactions.includes('✅');
+  // ✅がついている最新のメッセージを見つける (新しい順に並んでいる)
+  const latestProcessedIndex = messages.findIndex(msg => {
+    const reactions = Array.from(msg.reactions.cache.values()).map((r) => r.emoji.name ?? r.emoji.toString());
+    return reactions.includes('✅');
+  });
 
-  // 古いメッセージに✅がついていない場合、さらに古いメッセージを取得する必要がある
-  if (!hasCheckmark && hasMore) {
-    return { unprocessedMessages: [], needMoreHistory: true };
+  // ✅がついているメッセージが見つからない場合
+  if (latestProcessedIndex === -1) {
+    // さらに古いメッセージが存在する可能性があれば、履歴を取得する必要がある
+    if (hasMore) {
+      return { unprocessedMessages: [], needMoreHistory: true };
+    }
+    // これ以上古いメッセージがなければ、すべてのメッセージを未処理として返す (古い順)
+    return { unprocessedMessages: messages.slice().reverse(), needMoreHistory: false };
   }
 
-  // ✅がついていないメッセージを抽出 (古い順にするため reverse)
-  const unprocessed = messages
-    .filter(msg => {
-      const msgReactions = Array.from(msg.reactions.cache.values()).map((r) => r.emoji.name ?? r.emoji.toString());
-      return !msgReactions.includes('✅');
-    })
-    .reverse();
+  // ✅がついている最新メッセージより新しいメッセージを抽出 (古い順にするため reverse)
+  const unprocessed = messages.slice(0, latestProcessedIndex).reverse();
 
   return {
     unprocessedMessages: unprocessed,
