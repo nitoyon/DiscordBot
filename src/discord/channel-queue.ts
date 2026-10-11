@@ -3,14 +3,15 @@ import type { Config } from "../config.js";
 import type { SessionManager } from "../session-manager.js";
 import type { CronScheduler } from "../cron-scheduler.js";
 import { buildMessagePrompt, buildReactionPrompt } from "../claude/prompt-builder.js";
-import { ClaudeSession } from "../claude/session.js";
+import { ClaudeSession, SessionNotFoundError } from "../claude/session.js";
 import { ScriptSession } from "../claude/script-session.js";
 import { createDiscordHandler } from "./stream-handler.js";
 import { downloadAttachments, cleanupFiles } from "./attachment-downloader.js";
 import { processUnhandledMessages } from "../init-processor.js";
 import { executeHistoryRaw } from "./command-executor.js";
+import type { LookupResult, MessageSessionStore } from "../message-session-store.js";
 
-interface ChannelConfig {
+export interface ChannelConfig {
   name: string;
   skill: string;
   script?: string;
@@ -55,8 +56,13 @@ class SkillTaskQueue {
 export interface QueuedTextMessage {
   type: "message";
   message: Message;
+  /** 処理対象のチャンネル（logChannel 上のリプライでも、元のスキルチャンネル） */
   channel: TextChannel;
   channelConfig: ChannelConfig;
+  /** 対応表にあるメッセージへのリプライのとき、再開するセッション */
+  sessionEntry?: LookupResult;
+  /** リプライ先メッセージ（セッションを再開できず新規実行するときの文脈） */
+  replyTo?: { id: string; content?: string };
 }
 
 export interface QueuedReaction {
@@ -66,21 +72,49 @@ export interface QueuedReaction {
   channelId: string;
   channel: TextChannel;
   channelConfig: ChannelConfig;
+  /** 対応表にあるメッセージへのリアクションのとき、再開するセッション */
+  sessionEntry?: LookupResult;
 }
 
 export type QueuedItem = QueuedTextMessage | QueuedReaction;
+
+/** 対応表から引いた、セッション再開の対象 */
+export interface SessionTarget {
+  entry: LookupResult;
+  channel: TextChannel;
+  channelConfig: ChannelConfig;
+}
 
 export class ChannelQueue {
   private queues = new Map<string, QueuedItem[]>();
   private processing = new Map<string, boolean>();
   private config: Config;
   private sessions: SessionManager;
+  private messageSessions: MessageSessionStore;
   private logChannel: TextChannel | undefined;
   private skillQueue = new SkillTaskQueue();
 
-  constructor(config: Config, sessions: SessionManager) {
+  constructor(config: Config, sessions: SessionManager, messageSessions: MessageSessionStore) {
     this.config = config;
     this.sessions = sessions;
+    this.messageSessions = messageSessions;
+  }
+
+  /**
+   * メッセージ ID から、再開すべきスキルセッションを引く。
+   * 対応表にない、または元チャンネルが見つからない／設定から消えた場合は undefined。
+   */
+  resolveSessionTarget(messageId: string, client: Client): SessionTarget | undefined {
+    const entry = this.messageSessions.lookup(messageId);
+    if (!entry) return undefined;
+
+    const channel = client.channels.cache.get(entry.channelId);
+    if (!(channel instanceof TextChannel)) return undefined;
+
+    const channelConfig = this.config.channels.find((ch) => ch.name === channel.name);
+    if (!channelConfig) return undefined;
+
+    return { entry, channel, channelConfig };
   }
 
   /**
@@ -95,6 +129,27 @@ export class ChannelQueue {
 
     if (!(message.channel instanceof TextChannel)) return;
     const channel = message.channel;
+
+    // 対応表にあるメッセージへのリプライは、そのセッションを再開する（logChannel 上でも可）
+    const replyToId = message.reference?.messageId;
+    const target = replyToId ? this.resolveSessionTarget(replyToId, message.client) : undefined;
+    if (replyToId && target) {
+      const allowAll = target.channelConfig.allowAllUsers && channel.id === target.channel.id;
+      if (!allowAll && message.author.id !== this.config.discord.user.toString()) return;
+
+      console.log(
+        `[Discord] #${channel.name} ${message.author.username} replied to ${replyToId} (session ${target.entry.sessionId}): ${message.content}`,
+      );
+      this.enqueueItem({
+        type: "message",
+        message,
+        channel: target.channel,
+        channelConfig: target.channelConfig,
+        sessionEntry: target.entry,
+        replyTo: { id: replyToId },
+      });
+      return;
+    }
 
     const channelConfig = this.config.channels.find(
       (ch) => ch.name === channel.name,
@@ -117,7 +172,8 @@ export class ChannelQueue {
   }
 
   private enqueueItem(item: QueuedItem): void {
-    const channelId = item.type === "message" ? item.message.channelId : item.channelId;
+    // logChannel 上のリプライも、元チャンネルのキューで直列化する
+    const channelId = item.channel.id;
 
     if (!this.queues.has(channelId)) {
       this.queues.set(channelId, []);
@@ -168,7 +224,7 @@ export class ChannelQueue {
   }
 
   private async processReaction(item: QueuedReaction): Promise<void> {
-    const { channel, channelConfig } = item;
+    const { channel, channelConfig, sessionEntry } = item;
 
     const prompt = buildReactionPrompt({
       emoji: item.emoji,
@@ -176,6 +232,26 @@ export class ChannelQueue {
       channelId: item.channelId,
       channelName: channel.name,
     });
+
+    // 対応表にあるメッセージへのリアクション: そのセッションを再開する。
+    // 期限切れや再開失敗のときは通知だけ出して終える（リアクションだけでは新規実行する内容がない）
+    if (sessionEntry) {
+      if (sessionEntry.expired) {
+        await this.notifySessionUnavailable(sessionEntry, item.targetMessageId, "expired");
+        return;
+      }
+      const resumed = await this.continueSession({
+        entry: sessionEntry,
+        channel,
+        channelConfig,
+        prompt,
+        triggerMessageIds: [],
+      });
+      if (!resumed) {
+        await this.notifySessionUnavailable(sessionEntry, item.targetMessageId, "not_found");
+      }
+      return;
+    }
 
     const session = new ClaudeSession(
       this.config,
@@ -192,7 +268,137 @@ export class ChannelQueue {
     await session.run(prompt);
   }
 
+  /**
+   * 対応表にあるメッセージへのリプライ: そのセッションを再開する。
+   * 期限切れや再開失敗のときは通知したうえで、リプライ先の本文を添えて新規スキル実行する。
+   */
+  private async processSessionReply(
+    item: QueuedTextMessage & { sessionEntry: LookupResult; replyTo: { id: string } },
+  ): Promise<void> {
+    const { message, channel, channelConfig, sessionEntry, replyTo } = item;
+
+    if (!sessionEntry.expired) {
+      const attachmentPaths = await downloadAttachments(message.attachments, channelConfig.workdir);
+      let resumed: boolean;
+      try {
+        const prompt = buildMessagePrompt({
+          id: message.id,
+          skill: "",
+          content: message.content,
+          channelId: channel.id,
+          channelName: channel.name,
+          attachments: attachmentPaths,
+          username: message.author.username,
+          userid: message.author.id,
+          displayname: message.author.displayName,
+          created: message.createdAt.toISOString(),
+          replyTo: replyTo.id,
+        });
+        resumed = await this.continueSession({
+          entry: sessionEntry,
+          channel,
+          channelConfig,
+          prompt,
+          triggerMessageIds: [message.id],
+          // !discord reply は元チャンネル上のメッセージに対してのみ有効
+          replyToMessageId: message.channelId === channel.id ? message.id : undefined,
+        });
+      } finally {
+        await cleanupFiles(attachmentPaths);
+      }
+      if (resumed) return;
+      await this.notifySessionUnavailable(sessionEntry, replyTo.id, "not_found");
+    } else {
+      await this.notifySessionUnavailable(sessionEntry, replyTo.id, "expired");
+    }
+
+    const referenced = await message.fetchReference().catch(() => undefined);
+    await this.processMessage({
+      ...item,
+      sessionEntry: undefined,
+      replyTo: { id: replyTo.id, content: referenced?.content },
+    });
+  }
+
+  /**
+   * 既存のスキルセッションを resume して prompt を送る。
+   * 出力したメッセージは対応表に記録し、セッションの期限を延長する。
+   * @returns セッションが見つからず再開できなかった場合は false
+   */
+  private async continueSession(params: {
+    entry: LookupResult;
+    channel: TextChannel;
+    channelConfig: ChannelConfig;
+    prompt: string;
+    /** 対応表に追加で記録するメッセージ ID（ユーザーのリプライなど） */
+    triggerMessageIds: string[];
+    replyToMessageId?: string;
+  }): Promise<boolean> {
+    const { entry, channel, channelConfig, prompt } = params;
+    const sentIds: string[] = [];
+
+    const session = new ClaudeSession(
+      this.config,
+      channelConfig.workdir,
+      createDiscordHandler({
+        channel,
+        isSkillMode: true,
+        logChannel: this.logChannel,
+        config: this.config,
+        enqueue: (msg) => this.enqueueItem({ message: msg, channel, channelConfig, type: "message" }),
+        allowAllUsers: channelConfig.allowAllUsers,
+        replyToMessageId: params.replyToMessageId,
+        onMessageSent: (msg) => sentIds.push(msg.id),
+      }),
+      entry.sessionId,
+    );
+    session.onLog = this.makeLogCallback();
+
+    let notFound = false;
+    try {
+      await this.skillQueue.run(() => session.run(prompt));
+    } catch (error) {
+      if (!(error instanceof SessionNotFoundError)) throw error;
+      notFound = true;
+    } finally {
+      // エラー終了でも、それまでに出力したメッセージは記録して続きを書けるようにする
+      if (!notFound && session.sessionId) {
+        this.messageSessions.touch(entry.sessionId);
+        this.messageSessions.record(
+          [...params.triggerMessageIds, ...sentIds],
+          session.sessionId,
+          channel.id,
+        );
+      }
+    }
+
+    if (notFound) {
+      console.warn(`[Session] Session ${entry.sessionId} not found, removing from message-session map`);
+      this.messageSessions.deleteSession(entry.sessionId);
+      return false;
+    }
+    return true;
+  }
+
+  private async notifySessionUnavailable(
+    entry: LookupResult,
+    targetMessageId: string,
+    reason: "expired" | "not_found",
+  ): Promise<void> {
+    const detail = reason === "expired"
+      ? `有効期限切れ（最終利用: ${new Date(entry.lastUsedAt).toLocaleString("ja-JP")}）`
+      : "セッションが見つかりません";
+    const text = `メッセージ ${targetMessageId} のセッションは再開できません: ${detail}`;
+    console.log(`[Session] ${text}`);
+    await this.logChannel?.send(text).catch(() => {});
+  }
+
   private async processMessage(item: QueuedTextMessage): Promise<void> {
+    if (item.sessionEntry && item.replyTo) {
+      await this.processSessionReply({ ...item, sessionEntry: item.sessionEntry, replyTo: item.replyTo });
+      return;
+    }
+
     const { message, channel, channelConfig } = item;
     const attachmentPaths = await downloadAttachments(message.attachments, channelConfig.workdir);
 
@@ -204,25 +410,29 @@ export class ChannelQueue {
     const isScriptMode = shouldUseScript;
     const isSkillMode = isScriptMode || channelConfig.skill !== "";
 
+    // スキルセッションの再開用に、対応表へ記録するメッセージ ID
+    const sessionMessageIds = [message.id];
+
     // スキル/スクリプトモード時はログチャンネルに実行開始を通知
     if ((isSkillMode || isScriptMode) && this.logChannel) {
-      const guildId = channel.guild.id;
-      const messageUrl = `https://discord.com/channels/${guildId}/${channel.id}/${message.id}`;
       const label = isScriptMode ? `スクリプト` : `スキル \`/${channelConfig.skill}\``;
-      await this.logChannel.send(`${messageUrl} に対して${label}を実行...`);
+      const notice = await this.logChannel.send(`${message.url} に対して${label}を実行...`);
+      sessionMessageIds.push(notice.id);
     }
     try {
       const prompt = buildMessagePrompt({
         id: message.id,
         skill: channelConfig.skill,
         content: message.content,
-        channelId: message.channelId,
+        channelId: channel.id,
         channelName: channel.name,
         attachments: attachmentPaths,
         username: message.author.username,
         userid: message.author.id,
         displayname: message.author.displayName,
         created: message.createdAt.toISOString(),
+        replyTo: item.replyTo?.id,
+        replyToContent: item.replyTo?.content,
       });
 
       const discordHandler = createDiscordHandler({
@@ -232,7 +442,9 @@ export class ChannelQueue {
         config: this.config,
         enqueue: (msg) => this.enqueueItem({ message: msg, channel, channelConfig, type: "message" }),
         allowAllUsers: channelConfig.allowAllUsers,
-        replyToMessageId: message.id,
+        // logChannel 上のリプライから新規実行した場合は、元チャンネルにリプライ先がない
+        replyToMessageId: message.channelId === channel.id ? message.id : undefined,
+        onMessageSent: (msg) => sessionMessageIds.push(msg.id),
       });
 
       if (isScriptMode) {
@@ -243,15 +455,21 @@ export class ChannelQueue {
           this.config,
           channelConfig.workdir,
           discordHandler,
-          isSkillMode ? undefined : this.sessions.getSessionId(message.channelId),
+          isSkillMode ? undefined : this.sessions.getSessionId(channel.id),
         );
         if (!isSkillMode) {
-          session.onSessionChange = (id) => this.sessions.setSessionId(message.channelId, id);
+          session.onSessionChange = (id) => this.sessions.setSessionId(channel.id, id);
         }
         session.onLog = this.makeLogCallback();
 
         if (isSkillMode) {
-          await this.skillQueue.run(() => session.run(prompt));
+          try {
+            await this.skillQueue.run(() => session.run(prompt));
+          } finally {
+            if (session.sessionId) {
+              this.messageSessions.record(sessionMessageIds, session.sessionId, channel.id);
+            }
+          }
         } else {
           await session.run(prompt);
         }
@@ -279,6 +497,7 @@ export class ChannelQueue {
       attachments: [],
     });
 
+    const sentIds: string[] = [];
     const session = new ClaudeSession(
       this.config,
       workdir,
@@ -289,14 +508,22 @@ export class ChannelQueue {
         config: this.config,
         allowAllUsers: channelConfig.allowAllUsers,
         enqueue: (msg) => this.enqueueItem({ message: msg, channel, channelConfig, type: "message" }),
+        onMessageSent: (msg) => sentIds.push(msg.id),
       }),
     );
     session.onLog = this.makeLogCallback();
 
-    if (skill !== "init") {
-      await this.skillQueue.run(() => session.run(prompt));
-    } else {
-      await session.run(prompt);
+    try {
+      if (skill !== "init") {
+        await this.skillQueue.run(() => session.run(prompt));
+      } else {
+        await session.run(prompt);
+      }
+    } finally {
+      // cron 実行の出力にもリアクション/リプライで続きを指示できるようにする
+      if (session.sessionId) {
+        this.messageSessions.record(sentIds, session.sessionId, channel.id);
+      }
     }
   }
 

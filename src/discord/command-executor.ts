@@ -59,32 +59,34 @@ export async function executeExec(
 export async function executeSend(
   ctx: CommandContext,
   message: string,
-): Promise<void> {
+): Promise<Message | undefined> {
   try {
-    await ctx.channel.send({ content: message, flags: MessageFlags.SuppressEmbeds });
+    return await ctx.channel.send({ content: message, flags: MessageFlags.SuppressEmbeds });
   } catch (err) {
     console.error(`[!discord send] Error:`, err);
+    return undefined;
   }
 }
 
 export async function executeReply(
   ctx: CommandContext,
   message: string,
-): Promise<void> {
+): Promise<Message | undefined> {
   try {
     if (!ctx.replyToMessageId) {
       console.error(`[!discord reply] Error: replyToMessageId is not set in CommandContext`);
-      return;
+      return undefined;
     }
 
     const targetMessage = await ctx.channel.messages.fetch(ctx.replyToMessageId);
-    await targetMessage.reply({
+    return await targetMessage.reply({
       content: message,
       flags: MessageFlags.SuppressEmbeds,
       allowedMentions: { repliedUser: false }
     });
   } catch (err) {
     console.error(`[!discord reply] Error:`, err);
+    return undefined;
   }
 }
 
@@ -92,7 +94,7 @@ export async function executeSendto(
   ctx: CommandContext,
   channelRef: string,
   message: string,
-): Promise<void> {
+): Promise<Message | undefined> {
   try {
     const client = ctx.channel.client;
 
@@ -118,12 +120,13 @@ export async function executeSendto(
 
     if (!targetChannel) {
       console.error(`[!discord sendto] Channel not found: ${channelRef}`);
-      return;
+      return undefined;
     }
 
-    await targetChannel.send({ content: message, flags: MessageFlags.SuppressEmbeds });
+    return await targetChannel.send({ content: message, flags: MessageFlags.SuppressEmbeds });
   } catch (err) {
     console.error(`[!discord sendto] Error:`, err);
+    return undefined;
   }
 }
 

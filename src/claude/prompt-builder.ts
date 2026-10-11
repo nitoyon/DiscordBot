@@ -12,6 +12,8 @@ export function buildMessagePrompt(params: {
   userid?: string;
   displayname?: string;
   created?: string;
+  replyTo?: string;
+  replyToContent?: string;
 }): string {
   const attachmentsValue = params.attachments?.length
     ? ` ${params.attachments.join(" ")}`
@@ -27,6 +29,10 @@ export function buildMessagePrompt(params: {
   if (params.displayname) lines.push(`displayname: ${params.displayname}`);
   if (params.created) lines.push(`created: ${params.created}`);
   if (params.channelName) lines.push(`channelname: ${params.channelName}`);
+  if (params.replyTo) lines.push(`reply_to: ${params.replyTo}`);
+  if (params.replyToContent) {
+    lines.push(`reply_to_content: ${params.replyToContent.replace(/\r?\n/g, " ")}`);
+  }
   lines.push(
     `channel: ${params.channelId}`,
     `attachments:${attachmentsValue}`,

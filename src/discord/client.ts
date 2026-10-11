@@ -3,10 +3,14 @@ import type { Config } from "../config.js";
 import type { SessionManager } from "../session-manager.js";
 import { ChannelQueue } from "./channel-queue.js";
 import { CronScheduler } from "../cron-scheduler.js";
+import type { MessageSessionStore } from "../message-session-store.js";
+
+const PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 
 export function createDiscordClient(
   config: Config,
   sessions: SessionManager,
+  messageSessions: MessageSessionStore,
 ): Client {
   const client = new Client({
     intents: [
@@ -18,7 +22,7 @@ export function createDiscordClient(
     partials: [Partials.Message, Partials.Reaction],
   });
 
-  const channelQueue = new ChannelQueue(config, sessions);
+  const channelQueue = new ChannelQueue(config, sessions, messageSessions);
   const cronScheduler = new CronScheduler();
 
   client.on("clientReady", async () => {
@@ -51,6 +55,9 @@ export function createDiscordClient(
         console.error("[Cron] Error in periodic check:", err);
       });
     }, 60 * 1000);
+
+    // メッセージとセッションの対応表から、期限を大きく過ぎたエントリを掃除する
+    setInterval(() => messageSessions.pruneAndSave(), PRUNE_INTERVAL_MS);
   });
 
   client.on("interactionCreate", async (interaction) => {
@@ -89,13 +96,30 @@ export function createDiscordClient(
 
     if (!(reaction.message.channel instanceof TextChannel)) return;
     const channel = reaction.message.channel;
+    const emoji = reaction.emoji.name ?? reaction.emoji.toString();
+
+    // 対応表にあるメッセージへのリアクションは、そのスキルセッションに通知する（logChannel 上でも可）
+    const target = channelQueue.resolveSessionTarget(reaction.message.id, client);
+    if (target) {
+      console.log(
+        `[Discord] #${channel.name} ${user.username} reacted: ${emoji} (session ${target.entry.sessionId})`,
+      );
+      channelQueue.enqueueReaction({
+        emoji,
+        targetMessageId: reaction.message.id,
+        channelId: target.channel.id,
+        channel: target.channel,
+        channelConfig: target.channelConfig,
+        sessionEntry: target.entry,
+      });
+      return;
+    }
 
     const channelConfig = config.channels.find(
       (ch) => ch.name === channel.name,
     );
     if (!channelConfig) return;
 
-    const emoji = reaction.emoji.name ?? reaction.emoji.toString();
     console.log(
       `[Discord] #${channel.name} ${user.username} reacted: ${emoji}`,
     );

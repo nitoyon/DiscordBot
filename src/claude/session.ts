@@ -17,6 +17,16 @@ function formatToolInput(toolName: string, input: unknown): string {
 }
 
 /**
+ * resume しようとしたセッションが存在しない (JSONL が削除済みなど) ときに投げる
+ */
+export class SessionNotFoundError extends Error {
+  constructor(public sessionId: string) {
+    super(`No conversation found with session ID: ${sessionId}`);
+    this.name = "SessionNotFoundError";
+  }
+}
+
+/**
  * Handles parsed lines from Claude's response.
  * Return a string to feed back to Claude as a new message (for !discord history).
  * Return undefined to continue normally.
@@ -61,6 +71,14 @@ export class ClaudeSession {
 
     for await (const msg of stream) {
       if (msg.type === "result") {
+        // resume 先が存在しない場合、result の session_id は無関係な新規 ID になるので採用しない
+        if (
+          msg.subtype !== "success" &&
+          this.sessionId &&
+          msg.errors.some((e) => e.startsWith("No conversation found with session ID"))
+        ) {
+          throw new SessionNotFoundError(this.sessionId);
+        }
         if (this.sessionId !== msg.session_id) {
           this.sessionId = msg.session_id;
           this.onSessionChange?.(msg.session_id);

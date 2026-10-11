@@ -27,13 +27,14 @@ function createPendingMessage(): PendingMessage {
  * 溜まったテキスト/メディア/リアクションを Discord に送信する
  * @param channel 送信先チャンネル（null の場合は console.log のみ）
  * @param pending 送信するメッセージ
+ * @returns 送信したメッセージ
  */
 async function flushPending(
   channel: TextChannel | null,
   pending: PendingMessage,
-): Promise<void> {
+): Promise<Message[]> {
   const text = pending.textLines.join("\n");
-  if (!text.trim() && pending.mediaFiles.length === 0) return;
+  if (!text.trim() && pending.mediaFiles.length === 0) return [];
 
   console.log(`[flushPending] -> ${channel?.name ?? "null"}: "${text.slice(0, 80).replace(/\n/g, "\\n")}"`);
 
@@ -42,10 +43,11 @@ async function flushPending(
     if (text.trim()) {
       console.log(`[Discord output (no log channel)] ${text}`);
     }
-    return;
+    return [];
   }
 
   const chunks = splitMessage(text, 2000);
+  const sent: Message[] = [];
   let lastMessage: Message | undefined;
 
   for (let i = 0; i < chunks.length; i++) {
@@ -62,10 +64,12 @@ async function flushPending(
         flags: MessageFlags.SuppressEmbeds,
       });
     }
+    sent.push(lastMessage);
   }
 
   if (chunks.length === 0 && pending.mediaFiles.length > 0) {
     lastMessage = await channel.send({ files: pending.mediaFiles });
+    sent.push(lastMessage);
   }
 
   if (lastMessage && pending.reactions.length > 0) {
@@ -77,6 +81,7 @@ async function flushPending(
       }
     }
   }
+  return sent;
 }
 
 export interface DiscordHandlerOptions {
@@ -94,6 +99,8 @@ export interface DiscordHandlerOptions {
   allowAllUsers?: boolean;
   /** リプライ対象のメッセージID */
   replyToMessageId?: string;
+  /** Bot がメッセージを送信したときのコールバック（メッセージとセッションの対応表の記録用） */
+  onMessageSent?: (message: Message) => void;
 }
 
 /**
@@ -111,7 +118,7 @@ export interface DiscordHandlerOptions {
 export function createDiscordHandler(
   options: DiscordHandlerOptions,
 ): ClaudeSessionHandlers {
-  const { channel, isSkillMode, logChannel, config, enqueue, allowAllUsers, replyToMessageId } = options;
+  const { channel, isSkillMode, logChannel, config, enqueue, allowAllUsers, replyToMessageId, onMessageSent } = options;
   const cmdCtx = {
     channel,
     allowedUserId: allowAllUsers ? undefined : config.discord.user,
@@ -121,6 +128,16 @@ export function createDiscordHandler(
   // - スキルモードでない場合は channel
   // - スキルモードの場合は logChannel があればそちら、なければ null（console.log のみ）
   const textOutputChannel = isSkillMode ? (logChannel ?? null) : channel;
+
+  const notifySent = (messages: Array<Message | undefined>): void => {
+    if (!onMessageSent) return;
+    for (const msg of messages) {
+      if (msg) onMessageSent(msg);
+    }
+  };
+  const flush = async (pending: PendingMessage): Promise<void> => {
+    notifySent(await flushPending(textOutputChannel, pending));
+  };
 
   return {
     async handleLines(lines: ParsedLine[]): Promise<string | undefined> {
@@ -144,19 +161,19 @@ export function createDiscordHandler(
             break;
 
           case "discord_reaction":
-            await flushPending(textOutputChannel, pending);
+            await flush(pending);
             pending = createPendingMessage();
             await executeReaction(cmdCtx, line.messageId, line.emoji, line.remove);
             break;
 
           case "discord_delete":
-            await flushPending(textOutputChannel, pending);
+            await flush(pending);
             pending = createPendingMessage();
             await executeDelete(cmdCtx, line.messageId);
             break;
 
           case "discord_history": {
-            await flushPending(textOutputChannel, pending);
+            await flush(pending);
             const historyText = await executeHistory(
               cmdCtx,
               line.count,
@@ -167,7 +184,7 @@ export function createDiscordHandler(
           }
 
           case "discord_exec": {
-            await flushPending(textOutputChannel, pending);
+            await flush(pending);
             pending = createPendingMessage();
             const execMessage = await executeExec(cmdCtx, line.messageId);
             if (!execMessage) {
@@ -181,26 +198,26 @@ export function createDiscordHandler(
           }
 
           case "discord_send":
-            await flushPending(textOutputChannel, pending);
+            await flush(pending);
             pending = createPendingMessage();
-            await executeSend(cmdCtx, line.message);
+            notifySent([await executeSend(cmdCtx, line.message)]);
             break;
 
           case "discord_reply":
-            await flushPending(textOutputChannel, pending);
+            await flush(pending);
             pending = createPendingMessage();
-            await executeReply(cmdCtx, line.message);
+            notifySent([await executeReply(cmdCtx, line.message)]);
             break;
 
           case "discord_sendto":
-            await flushPending(textOutputChannel, pending);
+            await flush(pending);
             pending = createPendingMessage();
-            await executeSendto(cmdCtx, line.channel, line.message);
+            notifySent([await executeSendto(cmdCtx, line.channel, line.message)]);
             break;
         }
       }
 
-      await flushPending(textOutputChannel, pending);
+      await flush(pending);
       return undefined;
     },
   };
